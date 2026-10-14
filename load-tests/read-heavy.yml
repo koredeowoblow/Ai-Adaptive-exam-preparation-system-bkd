@@ -1,0 +1,75 @@
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up (5 VUs)"
+    - duration: 120
+      arrivalRate: 50
+      name: "Ramp up to 50 VUs"
+    - duration: 120
+      arrivalRate: 50
+      name: "Stress test 50 VUs"
+  processor: "./processor.js"
+  payload:
+    path: "tokens.csv"
+    fields:
+      - "email"
+      - "token"
+    order: "sequence"
+    skipHeader: true
+
+scenarios:
+  - name: "Read Heavy Browsing"
+    weight: 100
+    flow:
+      
+      # 1. Fetch departments
+      - get:
+          url: "/api/v1/departments?limit=10"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: 
+            - "logError"
+            - "setNextCursor"
+            
+      # 2. Fetch courses
+      - get:
+          url: "/api/v1/courses?limit=10"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: 
+            - "logError"
+            - "setNextCursor"
+            
+      # 3. Fetch topics
+      - get:
+          url: "/api/v1/topics?limit=10"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: 
+            - "logError"
+            - "setNextCursor"
+            
+      # 4. Fetch questions
+      - get:
+          url: "/api/v1/questions?limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: 
+            - "logError"
+            - "setNextCursor"
+            
+      # 5. Fetch leaderboard
+      - get:
+          url: "/api/v1/leaderboards/global?limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: "logError"
+
+      # 6. Fetch practice session history
+      - get:
+          url: "/api/v1/practice-sessions?limit=10"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: "logError"

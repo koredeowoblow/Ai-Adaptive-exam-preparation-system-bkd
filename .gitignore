@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Production build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+load-tests/tokens.csv
+load-tests/reports/
+load-tests/audit-report-*.json
+load-tests/audit-report-*.md
+
+# Temporary, scratch & tool folders
+scratch/
+.agent/
+.DS_Store
+Thumbs.db
+.agent

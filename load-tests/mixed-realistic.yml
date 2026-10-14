@@ -1,0 +1,111 @@
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 300
+      arrivalRate: 20
+      name: "Warm up (20 VUs)"
+    - duration: 600
+      arrivalRate: 150
+      name: "Ramp up to 150 VUs"
+    - duration: 600
+      arrivalRate: 350
+      name: "Stress test 350 VUs"
+  processor: "./processor.js"
+  payload:
+    path: "tokens.csv"
+    fields:
+      - "email"
+      - "token"
+    order: "sequence"
+    skipHeader: true
+
+scenarios:
+  # 1. Profile Load (10%)
+  - name: "Profile Load"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/v1/auth/me"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: "logError"
+
+  # 2. Starting Sessions (15%)
+  - name: "Starting Sessions"
+    weight: 15
+    flow:
+      - post:
+          url: "/api/v1/practice-sessions/start"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            courseId: "64e8b3b4f3b4b4b4b4b4b4b4"
+            mode: "ADAPTIVE"
+            questionCount: 5
+          afterResponse: "logError"
+
+  # 3. Submitting Answers (40%)
+  - name: "Submitting Answers"
+    weight: 40
+    flow:
+      - post:
+          url: "/api/v1/practice-sessions/start"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            courseId: "64e8b3b4f3b4b4b4b4b4b4b4"
+            mode: "ADAPTIVE"
+            questionCount: 5
+          capture:
+            - json: "$.data.session._id"
+              as: "sessionId"
+            - json: "$.data.nextQuestion._id"
+              as: "question1"
+          afterResponse: "logError"
+      - think: 2
+      - post:
+          url: "/api/v1/practice-sessions/{{ sessionId }}/answer"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            answer: "Option A"
+          afterResponse: "logError"
+  # 4. Browsing/Read Endpoints (25%)
+  - name: "Browsing/Read"
+    weight: 25
+    flow:
+      - get:
+          url: "/api/v1/questions?limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: "logError"
+      - get:
+          url: "/api/v1/topics?limit=10"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: "logError"
+      - get:
+          url: "/api/v1/leaderboards/global?limit=20"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: "logError"
+
+  # 5. History/Review (10%)
+  - name: "History/Review"
+    weight: 10
+    flow:
+      - get:
+          url: "/api/v1/practice-sessions?limit=10"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          capture:
+            - json: "$.data.items[0]._id"
+              as: "sessionId"
+              strict: false
+          afterResponse: "logError"
+      - get:
+          url: "/api/v1/practice-sessions/{{ sessionId }}"
+          ifTrue: "sessionId"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          afterResponse: "logError"

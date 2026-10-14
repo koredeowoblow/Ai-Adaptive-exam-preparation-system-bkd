@@ -1,0 +1,87 @@
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up (5 VUs)"
+    - duration: 120
+      arrivalRate: 50
+      name: "Ramp up to 50 VUs"
+    - duration: 120
+      arrivalRate: 200
+      name: "Stress test 200 VUs"
+  processor: "./processor.js"
+  variables:
+    userId:
+      - 1
+      - 2
+      - 3
+      - 4
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+      - 33
+      - 34
+      - 35
+      - 36
+      - 37
+      - 38
+      - 39
+      - 40
+      - 41
+      - 42
+      - 43
+      - 44
+      - 45
+      - 46
+      - 47
+      - 48
+      - 49
+      - 50
+
+scenarios:
+  - name: "Login Flow (Existing User)"
+    weight: 80
+    flow:
+      - post:
+          url: "/api/v1/auth/login"
+          json:
+            email: "student{{ userId }}@loadtest.com"
+            password: "password123!"
+          afterResponse: "logError"
+
+  - name: "Signup Flow (New User)"
+    weight: 20
+    flow:
+      - post:
+          url: "/api/v1/auth/register"
+          json:
+            name: "New Student {{$randomString()}}"
+            email: "new_{{$randomString()}}@loadtest.com"
+            password: "password123!"
+          afterResponse: "logError"

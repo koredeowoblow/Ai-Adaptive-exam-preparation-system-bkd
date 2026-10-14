@@ -1,0 +1,92 @@
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm up (5 VUs)"
+    - duration: 120
+      arrivalRate: 50
+      name: "Ramp up to 50 VUs"
+    - duration: 120
+      arrivalRate: 200
+      name: "Stress test 200 VUs"
+  processor: "./processor.js"
+  payload:
+    path: "tokens.csv"
+    fields:
+      - "email"
+      - "token"
+    order: "sequence"
+    skipHeader: true
+
+scenarios:
+  - name: "Adaptive Practice Session"
+    weight: 70
+    flow:
+      - post:
+          url: "/api/v1/practice-sessions/start"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            courseId: "64e8b3b4f3b4b4b4b4b4b4b4" # Note: would ideally fetch from /courses but keeping it simple
+            mode: "ADAPTIVE"
+            questionCount: 5
+          capture:
+            - json: "$.data.session._id"
+              as: "sessionId"
+            - json: "$.data.nextQuestion._id"
+              as: "question1"
+          afterResponse: "logError"
+      
+      # Loop 5 times to answer questions
+      - loop:
+          - think: 2 # 2 seconds think time
+          - post:
+              url: "/api/v1/practice-sessions/{{ sessionId }}/answer"
+              headers:
+                Authorization: "Bearer {{ token }}"
+              json:
+                sessionId: "{{ sessionId }}"
+                questionId: "{{ question1 }}" # Artillery loops with the same captured variable, in reality it should chain, but this works for load testing the endpoint
+                answer: "Option A"
+                timeSpent: 15
+              capture:
+                - json: "$.data.nextQuestion._id"
+                  as: "question1"
+                  strict: false
+              afterResponse: "logError"
+        count: 5
+
+  - name: "Batch Exam Session"
+    weight: 30
+    flow:
+      - post:
+          url: "/api/v1/practice-sessions/start"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            courseId: "64e8b3b4f3b4b4b4b4b4b4b4"
+            mode: "BATCH"
+            questionCount: 10
+          capture:
+            - json: "$.data.session._id"
+              as: "sessionId"
+            - json: "$.data.session.questions[0].questionId"
+              as: "q1"
+            - json: "$.data.session.questions[1].questionId"
+              as: "q2"
+          afterResponse: "logError"
+      - think: 5 # Think for 5 seconds representing exam
+      - post:
+          url: "/api/v1/practice-sessions/{{ sessionId }}/submit-batch"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          json:
+            answers:
+              - questionId: "{{ q1 }}"
+                answer: "Option A"
+                timeSpent: 10
+              - questionId: "{{ q2 }}"
+                answer: "Option B"
+                timeSpent: 10
+          afterResponse: "logError"

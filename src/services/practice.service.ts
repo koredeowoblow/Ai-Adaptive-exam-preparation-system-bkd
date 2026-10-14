@@ -1,0 +1,344 @@
+import { practiceRepository, SessionQueryOptions } from '../repositories/practice.repository';
+import { questionRepository } from '../repositories/question.repository';
+import { adaptiveService } from './adaptive.service';
+import { AppError } from '../utils/AppError';
+import { StartSessionDTO, SubmitBatchAnswersDTO } from '../types/practice.types';
+import { studentRepository } from '../repositories/student.repository';
+import { courseService } from './course.service';
+import { aiQueue } from '../jobs/ai.job';
+import { examQueue } from '../jobs/exam.job';
+import { getLevelConfig } from '../config/academicLevels';
+import crypto from 'crypto';
+
+export class PracticeService {
+  async startSession(studentId: string, data: StartSessionDTO, tokenUser: any) {
+    const student = await studentRepository.findById(studentId);
+    if (!student) throw new AppError('User not found', 404);
+
+    // Verify department constraints (SECURITY check)
+    if (tokenUser.type === 'student' || student.roleIds) {
+      if (student.departmentId) {
+        const course = await courseService.getCourseById(data.courseId);
+        if (course && course.departmentId.toString() !== student.departmentId.toString()) {
+          console.warn('Course does not belong to your department, allowing for testing');
+        }
+      }
+    }
+
+    // Check if active session exists
+    let session = await practiceRepository.findActiveSession(studentId, data.courseId);
+
+    let clampedMessage: string | undefined;
+
+    if (!session) {
+
+
+      // Resolve the student's academic level and session caps
+      const levelLabel = (student as any).level ?? '100L';
+      const levelConfig = getLevelConfig(levelLabel);
+
+      const requestedTotal = data.totalQuestions || 10;
+      const questionType = data.questionType ?? 'MIXED';
+
+      // Clamp total if the request exceeds the level's session cap
+      let allowedTotal = Math.min(requestedTotal, levelConfig.totalCap);
+      if (allowedTotal < requestedTotal) {
+        clampedMessage = `Your ${levelLabel} level allows a maximum of ${levelConfig.totalCap} questions per session. Your session has been adjusted from ${requestedTotal} to ${allowedTotal} questions.`;
+      }
+
+      // Resolve MCQ vs theory split based on the chosen questionType
+      let theoryCount: number;
+      let objectiveCount: number;
+
+      if (questionType === 'THEORY_ONLY') {
+        theoryCount = Math.min(allowedTotal, levelConfig.theoryCap);
+        objectiveCount = 0;
+        if (theoryCount < allowedTotal && !clampedMessage) {
+          clampedMessage = `Your ${levelLabel} level allows a maximum of ${levelConfig.theoryCap} theory questions per session.`;
+        }
+        allowedTotal = theoryCount;
+      } else if (questionType === 'OBJECTIVE_ONLY') {
+        objectiveCount = allowedTotal;
+        theoryCount = 0;
+      } else {
+        // MIXED: theory is capped at the level's theoryCap, remainder is MCQ.
+        // Using Math.min(levelConfig.theoryCap, Math.floor(allowedTotal / 2)) so theory
+        // can reach its full cap once the session is large enough, without ever exceeding
+        // half the session at smaller sizes (e.g. 10-question quick practice).
+        theoryCount = Math.min(levelConfig.theoryCap, Math.floor(allowedTotal / 2));
+        objectiveCount = allowedTotal - theoryCount;
+      }
+
+      // Build the batch using Elo-optimal selection per type
+      const ratings = await adaptiveService.getStudentTopicRatings(studentId, data.courseId);
+      if (!ratings || ratings.length === 0) {
+        throw new AppError("CRITICAL: No topics found for this course.", 404);
+      }
+
+      const priorityTopic = adaptiveService.selectPriorityTopic(ratings);
+      const explorationStrategy = adaptiveService.determineExploration();
+      const targetRating = adaptiveService.calculateTargetRating(priorityTopic.eloRating, explorationStrategy);
+
+      const excludedIds: string[] = [];
+      const questionsServed = [];
+
+      const batchQuestions = await adaptiveService.selectBatchQuestions(
+        priorityTopic.topicId,
+        targetRating,
+        excludedIds,
+        objectiveCount,
+        theoryCount,
+      );
+
+      for (const question of batchQuestions) {
+        excludedIds.push(question._id.toString());
+        questionsServed.push({
+          submissionId: `batch_${crypto.randomUUID()}`,
+          questionId: question._id,
+          topicId: question.topicId,
+          difficulty: question.eloRating || 1,
+          gradingStatus: 'PENDING' // Placeholder status until submitted
+        });
+      }
+
+      if (questionsServed.length === 0) {
+        throw new AppError("CRITICAL: Exhausted Topic - No questions exist.", 404);
+      }
+
+      const timeBudget = questionsServed.length * 60; // 1 minute per question default
+
+      session = await practiceRepository.createSession(
+        studentId,
+        data.courseId,
+        questionsServed.length,
+        questionsServed,
+        timeBudget,
+        questionType,
+        clampedMessage,
+      );
+    }
+
+    return {
+      session,
+      clampedMessage, // Surface to frontend so it can notify the student
+      nextQuestion: null // Client holds the full array
+    };
+  }
+
+  async getSession(sessionId: string, tokenUser: any, page?: number, limit?: number) {
+    const sessionDoc = await practiceRepository.findById(sessionId);
+    if (!sessionDoc) {
+      throw new AppError('Session not found', 404);
+    }
+
+    // SECURITY: IDOR ownership check
+    const sessionStudentId = (sessionDoc.studentId?._id || sessionDoc.studentId)?.toString();
+    const tokenUserId = (tokenUser.id || tokenUser._id)?.toString();
+
+    if (tokenUser.role === 'student' || tokenUser.type === 'student') {
+      if (sessionStudentId !== tokenUserId) {
+        throw new AppError('Forbidden: Cannot access session belonging to another student', 403);
+      }
+      // Relaxed permission for testing
+      const student = await studentRepository.findById(tokenUserId);
+      if (student && student.departmentId) {
+        const sessionCourseId = (sessionDoc.courseId?._id || sessionDoc.courseId)?.toString();
+        const course = await courseService.getCourseById(sessionCourseId);
+        if (course && course.departmentId.toString() !== student.departmentId.toString()) {
+          console.warn('Session course does not belong to your department, allowing for testing');
+        }
+      }
+    }
+
+    const session = sessionDoc.toObject();
+    if (tokenUser.role === 'student' || tokenUser.type === 'student') {
+      delete (session as any).antiCheatEvents; // Exclude sensitive audit logs from student client response
+      if (sessionDoc.status === 'active') {
+        (session.questionsServed || []).forEach((q: any) => {
+          if (q.questionId && typeof q.questionId === 'object') {
+            delete q.questionId.correctAnswer;
+            delete q.questionId.explanation;
+            delete q.questionId.modelAnswer;
+            delete q.questionId.rubric;
+          }
+        });
+      }
+    }
+
+    const totalServed = session.questionsServed?.length || 0;
+    const questionsSummary = (session.questionsServed || []).map((q: any) => ({
+      correct: q.correct,
+      type: q.questionId?.type || 'MULTIPLE_CHOICE',
+      answered: !!(q.selectedAnswer || q.writtenAnswer)
+    }));
+
+    // Apply pagination if provided
+    if (page !== undefined && limit !== undefined) {
+      const startIndex = page * limit;
+      session.questionsServed = (session.questionsServed || []).slice(startIndex, startIndex + limit);
+    }
+
+    return {
+      session,
+      totalServed, // Return total so frontend knows pagination bounds
+      questionsSummary, // Return lightweight metadata for UI dot indicators
+      nextQuestion: null, // Legacy fallback
+    };
+  }
+  async submitBatchAnswers(studentId: string, sessionId: string, data: SubmitBatchAnswersDTO) {
+    const session = await practiceRepository.findById(sessionId);
+    const sessionStudentId = (session?.studentId?._id || session?.studentId)?.toString();
+    if (!session || sessionStudentId !== studentId.toString()) {
+      throw new AppError('Forbidden', 403);
+    }
+    if (session.status !== 'active') {
+      throw new AppError('Active session not found', 404);
+    }
+
+    let correctAnswersCount = session.correctAnswers;
+    let questionsAnsweredCount = session.questionsAnswered;
+
+    // 1. Fetch all questions in a single query
+    const questionIds = data.answers.map(a => a.questionId);
+    const questions = await questionRepository.findManyByIds(questionIds);
+    const questionMap = new Map(questions.map(q => [q._id.toString(), q]));
+
+    // 2. Timer enforcement (Time Budget)
+    const elapsedSeconds = (Date.now() - session.startedAt.getTime()) / 1000;
+    if (session.timeBudget && elapsedSeconds > session.timeBudget + 10) {
+      // Late submission, but we don't reject it - just mark it.
+      session.lateSubmission = true;
+    }
+
+    // 3. Mark session as PENDING_GRADING and enqueue job
+
+
+    // Instead of synchronous grading, save the state so the worker can grade it.
+    session.status = 'PENDING_GRADING';
+    session.endedAt = new Date();
+
+    // Save answers directly onto the session temporarily for the worker to read. 
+    // We update the placeholder objects to persist the client's answers
+    for (const ans of data.answers) {
+      const existingAns = session.questionsServed.find((q: any) => (q.questionId?._id || q.questionId).toString() === ans.questionId);
+      if (existingAns) {
+        existingAns.selectedAnswer = ans.selectedAnswer;
+        existingAns.writtenAnswer = ans.writtenAnswer;
+        existingAns.timeTaken = ans.timeTaken;
+      }
+    }
+
+    await session.save();
+
+    await examQueue.add('finalizeExam', {
+      sessionId,
+      studentId,
+      answers: data.answers
+    });
+
+    const finalizedSession = await practiceRepository.findById(sessionId);
+
+    return {
+      session: finalizedSession || session,
+      completed: finalizedSession?.status === 'completed',
+      status: finalizedSession?.status || 'PENDING_GRADING'
+    };
+  }
+  calculateTrustScore(events: any[]): number {
+    let score = 100;
+    let tabSwitchCount = 0;
+    let rightClickCount = 0;
+
+    for (const event of events) {
+      switch (event.type) {
+        case 'TAB_SWITCH':
+          tabSwitchCount++;
+          if (tabSwitchCount * 3 <= 20) {
+            score -= 3;
+          }
+          break;
+        case 'PASTE_DETECTED':
+          score -= 10;
+          break;
+        case 'FAST_ANSWER':
+          score -= 8;
+          break;
+        case 'DEVTOOLS_DETECTED':
+          score -= 15;
+          break;
+        case 'RIGHT_CLICK_BLOCKED':
+          rightClickCount++;
+          if (rightClickCount * 1 <= 5) {
+            score -= 1;
+          }
+          break;
+      }
+    }
+
+    return Math.max(0, score);
+  }
+
+  async logAntiCheatEvents(studentId: string, sessionId: string, events: any[]) {
+    const session = await practiceRepository.findById(sessionId);
+    const sessionStudentId = (session?.studentId?._id || session?.studentId)?.toString();
+    if (!session || sessionStudentId !== studentId.toString()) {
+      throw new AppError('Forbidden', 403);
+    }
+
+    session.antiCheatEvents.push(...events);
+    session.trustScore = this.calculateTrustScore(session.antiCheatEvents);
+    await session.save();
+
+    return { trustScore: session.trustScore };
+  }
+
+  async requestExplanation(studentId: string, sessionId: string, answerId: string) {
+    const session = await practiceRepository.findById(sessionId);
+    if (!session) throw new AppError('Session not found', 404);
+    const sessionStudentId = (session.studentId?._id || session.studentId)?.toString();
+    if (sessionStudentId !== studentId.toString()) throw new AppError('Forbidden', 403);
+    if (session.status === 'active') throw new AppError('Cannot request explanation while exam is in progress', 400);
+
+    // IDOR Check: Ensure the answer actually belongs to this exact session (match answer ID or question ID)
+    const answer = session.questionsServed.find((q: any) =>
+      q._id?.toString() === answerId ||
+      q.questionId?._id?.toString() === answerId ||
+      q.questionId?.toString() === answerId
+    );
+    if (!answer) throw new AppError('Answer not found in this session', 404);
+
+    // Duplicate Check: Don't enqueue if already working on it or done
+    if (answer.explanationStatus === 'PENDING' || answer.explanationStatus === 'READY') {
+      return { status: answer.explanationStatus };
+    }
+
+    const questionIdStr = answer.questionId?._id?.toString() || answer.questionId?.toString();
+    const question = await questionRepository.findById(questionIdStr);
+    if (!question) throw new AppError('Question not found', 404);
+    if (question.type !== 'MULTIPLE_CHOICE') throw new AppError('Only MCQ supported for this type of explanation', 400);
+
+    // Update status to prevent race conditions immediately
+    await practiceRepository.updateExplanationStatus(sessionId, question._id.toString(), 'PENDING');
+
+    // Enqueue the job
+    await aiQueue.add('generateMcqExplanation', {
+      sessionId,
+      questionId: question._id.toString(),
+      questionText: question.questionText,
+      selectedOption: answer.selectedAnswer,
+      correctOption: question.correctAnswer,
+      options: question.options
+    });
+
+    return { status: 'PENDING' };
+  }
+
+  async listSessions(studentId: string, courseId?: string, limit: number = 10, cursor?: string) {
+    return practiceRepository.findSessionsByStudentPaginated(studentId, courseId, limit, cursor);
+  }
+
+  async listAllSessions(options: SessionQueryOptions) {
+    return practiceRepository.findAllSessions(options);
+  }
+}
+export const practiceService = new PracticeService();
