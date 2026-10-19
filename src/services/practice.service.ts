@@ -28,17 +28,29 @@ export class PracticeService {
     // Check if active session exists
     let session = await practiceRepository.findActiveSession(studentId, data.courseId);
 
+    const requestedTotal = data.totalQuestions || 10;
+    const questionType = data.questionType ?? 'MIXED';
+
+    if (session) {
+      const now = Date.now();
+      const startedAtMs = new Date(session.startedAt).getTime();
+      const budgetMs = (session.timeBudget ? session.timeBudget + 180 : 3600) * 1000;
+      const isExpired = (now - startedAtMs) > budgetMs;
+      const isUndersized = (session.totalQuestions < requestedTotal) && (session.questionsAnswered === 0);
+      const isTypeMismatched = questionType !== 'MIXED' && session.questionTypeMix !== questionType && (session.questionsAnswered === 0);
+
+      if (isExpired || isUndersized || isTypeMismatched) {
+        await practiceRepository.endSession(session._id.toString(), session.score || 0);
+        session = null;
+      }
+    }
+
     let clampedMessage: string | undefined;
 
     if (!session) {
-
-
       // Resolve the student's academic level and session caps
       const levelLabel = (student as any).level ?? '100L';
       const levelConfig = getLevelConfig(levelLabel);
-
-      const requestedTotal = data.totalQuestions || 10;
-      const questionType = data.questionType ?? 'MIXED';
 
       // Clamp total if the request exceeds the level's session cap
       let allowedTotal = Math.min(requestedTotal, levelConfig.totalCap);

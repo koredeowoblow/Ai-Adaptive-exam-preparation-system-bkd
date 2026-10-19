@@ -43,7 +43,10 @@ export class PracticeRepository {
   }
 
   async findActiveSession(studentId: string, courseId: string) {
-    return PracticeSession.findOne({ studentId, courseId, status: 'active' });
+    return PracticeSession.findOne({ studentId, courseId, status: 'active' })
+      .populate('courseId', 'title code')
+      .populate('studentId', 'name email level')
+      .populate('questionsServed.questionId');
   }
 
 

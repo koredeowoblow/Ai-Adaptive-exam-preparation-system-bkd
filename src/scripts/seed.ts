@@ -18,7 +18,7 @@ import { Request, Response } from "express";
 import { cacheService } from "../utils/cache";
 import { redisClient } from "../config/redis";
 import { lasustechSeedData } from "./lasustech-data";
-import { csc101ExpandedQuestions, csc102ExpandedQuestions, csc201ExpandedQuestions } from "./expanded-questions";
+import { getExpandedQuestionsForCourse } from "./seed-expansions";
 
 // Mock Express Request and Response
 const mockReq = (user: any, body: any = {}, params: any = {}): any => ({
@@ -193,11 +193,8 @@ async function seed() {
         );
         const topic = topicRes.responseData?.data;
 
-        // Seed unique Questions using real templates
-        const questionsToSeed = cData.code === 'CSC101' ? csc101ExpandedQuestions
-          : cData.code === 'CSC102' ? csc102ExpandedQuestions
-          : cData.code === 'CSC201' ? csc201ExpandedQuestions
-          : cData.qs;
+        // Seed unique Questions using dedicated CS banks and expanded course pools
+        const questionsToSeed = getExpandedQuestionsForCourse(cData);
 
         logger.info(`Seeding ${questionsToSeed.length} unique questions for ${course.title}...`);
         for (let i = 0; i < questionsToSeed.length; i++) {
