@@ -421,6 +421,7 @@ async function seed() {
         for (let i = 1; i <= 200; i++) {
           const qTemplate = cData.qs[(i - 1) % cData.qs.length];
           const isTheory = i % 5 === 0;
+          const qRes = new MockRes();
           const questionData: any = {
             topicId: topic._id,
             questionText: qTemplate.q,
