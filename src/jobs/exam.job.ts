@@ -76,10 +76,13 @@ export const processExamJob = async (job: Job | any) => {
 
         totalExpectedMinMs += isTheory ? 3000 + (question.questionText.length * 15) : 3000;
 
+        const questionTopicId = question.topicId?._id || question.topicId;
+        const topicIdStr = questionTopicId ? questionTopicId.toString() : '';
+
         const answerData: any = {
           submissionId,
           questionId: question._id,
-          topicId: question.topicId._id,
+          topicId: questionTopicId,
           difficulty: question.eloRating || 1,
           timeTaken: ans.timeTaken,
           answeredAt: new Date(),
@@ -105,11 +108,12 @@ export const processExamJob = async (job: Job | any) => {
         // Prepare mastery update or AI job
         if (!isTheory) {
           batchAdaptiveAnswers.push({
-            topicId: question.topicId._id.toString(),
+            topicId: topicIdStr,
             questionId: question._id.toString(),
             isCorrect: isCorrect!
           });
         } else {
+          const sessionCourseIdStr = (session.courseId?._id || session.courseId)?.toString() || '';
           aiJobs.push({
             name: 'gradeTheoryAnswer',
             data: {
@@ -118,8 +122,8 @@ export const processExamJob = async (job: Job | any) => {
               questionId: question._id.toString(),
               questionText: question.questionText || '',
               studentId,
-              courseId: session.courseId._id ? session.courseId._id.toString() : session.courseId.toString(),
-              topicId: question.topicId._id.toString(),
+              courseId: sessionCourseIdStr,
+              topicId: topicIdStr,
               writtenAnswer: ans.writtenAnswer,
               modelAnswer: question.modelAnswer,
               rubric: question.rubric
@@ -140,7 +144,7 @@ export const processExamJob = async (job: Job | any) => {
       }
 
       // Process all objective Elo updates in bulk
-      const courseIdStr = session.courseId._id ? session.courseId._id.toString() : session.courseId.toString();
+      const courseIdStr = (session.courseId?._id || session.courseId)?.toString() || '';
       await adaptiveService.processBatchAnswers(studentId, courseIdStr, batchAdaptiveAnswers);
 
       // Enqueue all AI jobs for theory questions

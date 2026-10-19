@@ -420,13 +420,10 @@ async function seed() {
         logger.info(`Seeding 200 questions for ${course.title}...`);
         for (let i = 1; i <= 200; i++) {
           const qTemplate = cData.qs[(i - 1) % cData.qs.length];
-          const variantText = ` [Variant ${i}]`;
           const isTheory = i % 5 === 0;
-
-          const qRes = new MockRes();
           const questionData: any = {
             topicId: topic._id,
-            questionText: qTemplate.q + variantText,
+            questionText: qTemplate.q,
             explanation: qTemplate.exp,
             explanationSource: "manual",
             eloRating: 1000 + Math.floor(Math.random() * 800), // Random elo 1000-1800
