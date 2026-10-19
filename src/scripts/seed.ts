@@ -18,6 +18,7 @@ import { Request, Response } from "express";
 import { cacheService } from "../utils/cache";
 import { redisClient } from "../config/redis";
 import { lasustechSeedData } from "./lasustech-data";
+import { csc101ExpandedQuestions, csc102ExpandedQuestions, csc201ExpandedQuestions } from "./expanded-questions";
 
 // Mock Express Request and Response
 const mockReq = (user: any, body: any = {}, params: any = {}): any => ({
@@ -39,6 +40,10 @@ class MockRes {
 
   json(data: any) {
     this.responseData = data;
+    return this;
+  }
+
+  cookie(name: string, val: string, options?: any) {
     return this;
   }
 }
@@ -189,9 +194,14 @@ async function seed() {
         const topic = topicRes.responseData?.data;
 
         // Seed unique Questions using real templates
-        logger.info(`Seeding ${cData.qs.length} unique questions for ${course.title}...`);
-        for (let i = 0; i < cData.qs.length; i++) {
-          const qTemplate = cData.qs[i];
+        const questionsToSeed = cData.code === 'CSC101' ? csc101ExpandedQuestions
+          : cData.code === 'CSC102' ? csc102ExpandedQuestions
+          : cData.code === 'CSC201' ? csc201ExpandedQuestions
+          : cData.qs;
+
+        logger.info(`Seeding ${questionsToSeed.length} unique questions for ${course.title}...`);
+        for (let i = 0; i < questionsToSeed.length; i++) {
+          const qTemplate = questionsToSeed[i];
           const isTheory = !qTemplate.a || i % 4 === 3; // Theory template or 1 out of 4
           const qRes = new MockRes();
           const questionData: any = {
@@ -226,7 +236,7 @@ async function seed() {
             qRes as unknown as Response,
           );
         }
-        logger.info(`Successfully seeded ${cData.qs.length} unique questions for ${course.title}`);
+        logger.info(`Successfully seeded ${questionsToSeed.length} unique questions for ${course.title}`);
       }
     }
 

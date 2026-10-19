@@ -5,6 +5,17 @@ import { sendResponse } from '../utils/sendResponse';
 export class AuthController {
   register = async (req: Request, res: Response) => {
     const data = await authService.registerStudent(req.body);
+    
+    // Set HttpOnly cookie for frontend authentication
+    if (typeof res.cookie === 'function') {
+      res.cookie('token', data.accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 60 * 60 * 1000 // 1 hour
+      });
+    }
+
     return sendResponse(res, 201, 'Student registered successfully', data);
   };
 
@@ -12,23 +23,27 @@ export class AuthController {
     const data = await authService.login(req.body);
     
     // Set HttpOnly cookie for frontend authentication
-    res.cookie('token', data.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 60 * 60 * 1000 // 1 hour
-    });
+    if (typeof res.cookie === 'function') {
+      res.cookie('token', data.accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 60 * 60 * 1000 // 1 hour
+      });
+    }
     
     return sendResponse(res, 200, 'Login successful', data);
   };
 
   logout = async (req: Request, res: Response) => {
-    res.cookie('token', '', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 0 // Clear immediately
-    });
+    if (typeof res.cookie === 'function') {
+      res.cookie('token', '', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 0 // Clear immediately
+      });
+    }
     return sendResponse(res, 200, 'Logged out successfully');
   };
 
