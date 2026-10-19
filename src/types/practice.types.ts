@@ -46,6 +46,7 @@ export interface IPracticeSession {
   timeBudget?: number; // in seconds
   lateSubmission?: boolean;
   questionTypeMix?: QuestionTypeMix;
+  mode?: 'quick' | 'mock' | 'diagnostic';
   clampedMessage?: string; // Set when totalQuestions was clamped by the level cap
 }
 
@@ -55,6 +56,7 @@ export interface StartSessionDTO {
   courseId: string;
   totalQuestions?: number;
   questionType?: QuestionTypeMix;
+  mode?: 'quick' | 'mock' | 'diagnostic';
 }
 
 export interface SubmitAnswerDTO {

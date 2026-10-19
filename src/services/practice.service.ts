@@ -11,7 +11,45 @@ import { getLevelConfig } from '../config/academicLevels';
 import crypto from 'crypto';
 
 export class PracticeService {
+  private inFlightStarts = new Map<string, Promise<any>>();
+
   async startSession(studentId: string, data: StartSessionDTO, tokenUser: any) {
+    const resolvedMode: 'quick' | 'mock' | 'diagnostic' =
+      data.mode ||
+      (data.totalQuestions && data.totalQuestions >= 40
+        ? 'mock'
+        : (data.totalQuestions && data.totalQuestions <= 5 ? 'diagnostic' : 'quick'));
+
+    // Allow bypassing in-memory deduplication for rigorous DB-level concurrency verification
+    if (process.env.BYPASS_IN_MEMORY_DEDUPE === 'true') {
+      return this.executeStartSession(studentId, data, tokenUser, resolvedMode);
+    }
+
+    const modeKey = `${resolvedMode}_${data.questionType || 'MIXED'}`;
+    const lockKey = `${studentId}:${data.courseId}:${modeKey}`;
+    const existing = this.inFlightStarts.get(lockKey);
+    if (existing) {
+      return existing;
+    }
+
+    const startPromise = (async () => {
+      try {
+        return await this.executeStartSession(studentId, data, tokenUser, resolvedMode);
+      } finally {
+        this.inFlightStarts.delete(lockKey);
+      }
+    })();
+
+    this.inFlightStarts.set(lockKey, startPromise);
+    return startPromise;
+  }
+
+  private async executeStartSession(
+    studentId: string,
+    data: StartSessionDTO,
+    tokenUser: any,
+    resolvedMode: 'quick' | 'mock' | 'diagnostic' = 'quick',
+  ) {
     const student = await studentRepository.findById(studentId);
     if (!student) throw new AppError('User not found', 404);
 
@@ -25,8 +63,8 @@ export class PracticeService {
       }
     }
 
-    // Check if active session exists
-    let session = await practiceRepository.findActiveSession(studentId, data.courseId);
+    // Check if active session exists for this student, course, AND mode
+    let session = await practiceRepository.findActiveSession(studentId, data.courseId, resolvedMode);
 
     const requestedTotal = data.totalQuestions || 10;
     const questionType = data.questionType ?? 'MIXED';
@@ -211,15 +249,29 @@ export class PracticeService {
 
       const timeBudget = questionsServed.length * 60; // 1 minute per question default
 
-      session = await practiceRepository.createSession(
-        studentId,
-        data.courseId,
-        questionsServed.length,
-        questionsServed,
-        timeBudget,
-        questionType,
-        clampedMessage,
-      );
+      try {
+        session = await practiceRepository.createSession(
+          studentId,
+          data.courseId,
+          questionsServed.length,
+          questionsServed,
+          timeBudget,
+          questionType,
+          clampedMessage,
+          resolvedMode,
+        );
+      } catch (err: any) {
+        if (err.code === 11000) {
+          const existingActive = await practiceRepository.findActiveSession(studentId, data.courseId, resolvedMode);
+          if (existingActive) {
+            session = existingActive;
+          } else {
+            throw err;
+          }
+        } else {
+          throw err;
+        }
+      }
     }
 
     return {

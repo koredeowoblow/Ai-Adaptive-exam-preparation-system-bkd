@@ -50,6 +50,7 @@ const PracticeSessionSchema = new Schema<IPracticeSessionDocument>(
     timeBudget: { type: Number },
     lateSubmission: { type: Boolean, default: false },
     questionTypeMix: { type: String, enum: ['MIXED', 'OBJECTIVE_ONLY', 'THEORY_ONLY'], default: 'MIXED' },
+    mode: { type: String, enum: ['quick', 'mock', 'diagnostic'], default: 'quick', required: true },
     clampedMessage: { type: String }, // Populated when totalQuestions was clamped by the level cap
   },
   {
@@ -60,4 +61,19 @@ const PracticeSessionSchema = new Schema<IPracticeSessionDocument>(
 PracticeSessionSchema.index({ studentId: 1, courseId: 1, status: 1 });
 PracticeSessionSchema.index({ studentId: 1, status: 1, endedAt: -1 });
 
+// Durable guard: exactly one active session per student, course, and mode
+PracticeSessionSchema.index(
+  { studentId: 1, courseId: 1, mode: 1 },
+  { unique: true, partialFilterExpression: { status: 'active' } }
+);
+
 export const PracticeSession = model<IPracticeSessionDocument>('PracticeSession', PracticeSessionSchema);
+
+// Explicitly listen to index error events so autoIndex failures are never silent
+PracticeSession.on('index', (error) => {
+  if (error) {
+    console.error('[Mongoose:IndexError] Failed to build PracticeSession unique index:', error);
+  } else {
+    console.log('[Mongoose:IndexSuccess] PracticeSession indexes successfully synchronized.');
+  }
+});

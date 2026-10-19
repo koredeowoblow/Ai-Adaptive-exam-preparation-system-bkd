@@ -10,6 +10,7 @@ export class PracticeRepository {
     timeBudget?: number,
     questionTypeMix?: string,
     clampedMessage?: string,
+    mode: 'quick' | 'mock' | 'diagnostic' = 'quick',
   ) {
     return PracticeSession.create({
       studentId,
@@ -18,6 +19,7 @@ export class PracticeRepository {
       questionsServed,
       timeBudget,
       questionTypeMix: (questionTypeMix ?? 'MIXED') as QuestionTypeMix,
+      mode,
       ...(clampedMessage ? { clampedMessage } : {}),
     });
   }
@@ -30,7 +32,7 @@ export class PracticeRepository {
     return PracticeSession.find(query)
       .sort({ _id: -1 })
       .limit(limit)
-      .select('_id courseId status score trustScore startedAt endedAt totalQuestions questionsAnswered')
+      .select('_id courseId status score trustScore startedAt endedAt totalQuestions questionsAnswered mode')
       .populate('courseId', 'title')
       .lean();
   }
@@ -42,8 +44,10 @@ export class PracticeRepository {
       .populate('questionsServed.questionId');
   }
 
-  async findActiveSession(studentId: string, courseId: string) {
-    return PracticeSession.findOne({ studentId, courseId, status: 'active' })
+  async findActiveSession(studentId: string, courseId: string, mode?: 'quick' | 'mock' | 'diagnostic') {
+    const query: any = { studentId, courseId, status: 'active' };
+    if (mode) query.mode = mode;
+    return PracticeSession.findOne(query)
       .populate('courseId', 'title code')
       .populate('studentId', 'name email level')
       .populate('questionsServed.questionId');
