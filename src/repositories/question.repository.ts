@@ -189,6 +189,7 @@ export class QuestionRepository {
     excludedQuestionIds: string[],
     limit: number,
     questionType?: 'MULTIPLE_CHOICE' | 'THEORY',
+    excludedTexts: string[] = [],
   ) {
     if (limit <= 0) return [];
 
@@ -198,8 +199,13 @@ export class QuestionRepository {
 
     const typeFilter = questionType ? { type: questionType } : {};
 
-    // Fetch double the limit from both sides to ensure we have enough candidates
-    const searchLimit = limit * 2;
+    // Normalize incoming excluded texts
+    const excludedTextSet = new Set<string>(
+      excludedTexts.map(t => (t || '').trim().toLowerCase()).filter(Boolean)
+    );
+
+    // Fetch a wider candidate pool from both sides to ensure enough unique items survive deduplication
+    const searchLimit = Math.max(limit * 8, 40);
     const [above, below] = await Promise.all([
       Question.find({ 
         topicId: topicObjectId, 
@@ -223,11 +229,24 @@ export class QuestionRepository {
       q.eloDifference = Math.abs(q.eloRating - targetElo);
     });
 
-    // Sort by closest match
+    // Sort by closest match to target Elo
     candidates.sort((a, b) => a.eloDifference - b.eloDifference);
 
-    // Slice the top `limit` results
-    const selected = candidates.slice(0, limit);
+    // Strictly deduplicate by normalized question prompt so no identical questions enter the batch
+    const selected: any[] = [];
+    const seenTextsInBatch = new Set<string>(excludedTextSet);
+
+    for (const q of candidates) {
+      const normText = (q.questionText || '').trim().toLowerCase();
+      if (!normText || seenTextsInBatch.has(normText)) {
+        continue;
+      }
+      seenTextsInBatch.add(normText);
+      selected.push(q);
+      if (selected.length >= limit) {
+        break;
+      }
+    }
 
     // Shuffle the result slightly to prevent exactly identical batches for same targetElo
     for (let i = selected.length - 1; i > 0; i--) {

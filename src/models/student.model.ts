@@ -26,8 +26,12 @@ const StudentSchema = new Schema<IStudentDocument>(
     },
     level: {
       type: String,
-      enum: ['100L', '200L', '300L', '400L'],
+      enum: ['100L', '200L', '300L', '400L', '500L'],
       default: '100L',
+    },
+    nextExamDate: {
+      type: Date,
+      default: null,
     },
     enrolledCourseIds: [
       {

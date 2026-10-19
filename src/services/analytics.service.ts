@@ -61,8 +61,8 @@ export class AnalyticsService {
 
     const examReadinessScore = Math.min(100, Math.round(averageScore * 0.5 + passRate * 0.3 + averageMastery * 0.2));
 
-    // Cohort / Level Breakdown (100L, 200L, 300L, 400L)
-    const levels = ['100L', '200L', '300L', '400L'];
+    // Cohort / Level Breakdown (100L, 200L, 300L, 400L, 500L)
+    const levels = ['100L', '200L', '300L', '400L', '500L'];
     const cohortLevels = levels.map((lvl) => {
       const lvlStudents = enrolledStudents.filter((s) => s.level === lvl);
       const studentIds = new Set(lvlStudents.map((s) => s._id.toString()));
@@ -270,8 +270,8 @@ export class AnalyticsService {
     const overallAccuracy = totalQuestionsAnswered > 0 ? Math.round((totalCorrect / totalQuestionsAnswered) * 100) : 0;
     const departmentReadinessScore = Math.min(100, Math.round(averageScore * 0.55 + passRate * 0.45));
 
-    // Academic Level Cohort Breakdown (100L - 400L)
-    const levels = ['100L', '200L', '300L', '400L'];
+    // Academic Level Cohort Breakdown (100L - 500L)
+    const levels = ['100L', '200L', '300L', '400L', '500L'];
     const levelBreakdown = levels.map((lvl) => {
       const lvlStudents = students.filter((s) => s.level === lvl);
       const studentIds = new Set(lvlStudents.map((s) => s._id.toString()));

@@ -2,7 +2,7 @@ import { IntegrityEventType, IntegritySeverity } from '../models/integrity.model
 import { integrityRepository } from '../repositories/integrity.repository';
 import { AppError } from '../utils/AppError';
 
-// Severity mapping — mirrors what the frontend also enforces
+// Severity mapping - mirrors what the frontend also enforces
 const SEVERITY_MAP: Record<IntegrityEventType, IntegritySeverity> = {
   WINDOW_BLUR: 'MEDIUM',
   VISIBILITY_CHANGE: 'HIGH',

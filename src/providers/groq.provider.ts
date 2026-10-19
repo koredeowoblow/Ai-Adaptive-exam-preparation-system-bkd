@@ -128,7 +128,7 @@ The student's answer may use standard mathematical notation, Unicode symbols, or
 QUESTION:
 ${effectiveQuestionText}
 
-MODEL ANSWER (reference — the student's answer does not need to match this 
+MODEL ANSWER (reference - the student's answer does not need to match this 
 wording, only the substance):
 ${safeModelAnswer}
 
@@ -218,16 +218,25 @@ Use examples where helpful. Keep responses focused, encouraging, and well-struct
     }
   }
 
-  async generateStudyPlan(studentStats: string, department?: string): Promise<string> {
+  async generateStudyPlan(studentStats: string, department?: string, level?: string, nextExamDate?: string): Promise<string> {
+    let examContext = 'No upcoming exam date specified (steady pacing).';
+    if (nextExamDate) {
+      const examTime = new Date(nextExamDate).getTime();
+      const diffDays = Math.max(0, Math.ceil((examTime - Date.now()) / (1000 * 60 * 60 * 24)));
+      examContext = `Upcoming Exam Date: ${new Date(nextExamDate).toDateString()} (${diffDays} days remaining until exam). Calibrate daily study intensity and revision checkpoints towards this deadline.`;
+    }
+
     const prompt = `You are an expert academic advisor for Nigerian university students.
 
-Student performance data:
+Student academic profile:
 ${studentStats}
 ${department ? `Department: ${department}` : ''}
+${level ? `Academic Level: ${level}` : ''}
+Exam Timeline: ${examContext}
 
 Generate a structured 7-day study plan in JSON format with this exact schema:
 {
-  "weekGoal": "string (one motivational sentence)",
+  "weekGoal": "string (one motivational sentence acknowledging timeline)",
   "days": [
     {
       "day": "Monday",
@@ -240,7 +249,7 @@ Generate a structured 7-day study plan in JSON format with this exact schema:
   "tips": ["Study tip 1", "Study tip 2", "Study tip 3"]
 }
 
-Base the plan on the student's weakest areas. Return ONLY valid JSON, no markdown code blocks.`;
+Base the plan on the student's weakest areas and exam timeline urgency. Return ONLY valid JSON, no markdown code blocks.`;
 
     try {
       const chatCompletion = await this.groq.chat.completions.create({

@@ -79,26 +79,118 @@ export class PracticeService {
       const explorationStrategy = adaptiveService.determineExploration();
       const targetRating = adaptiveService.calculateTargetRating(priorityTopic.eloRating, explorationStrategy);
 
-      const excludedIds: string[] = [];
-      const questionsServed = [];
+      // Exclude questions already answered in recent sessions to promote variety
+      const recentSessions = await practiceRepository.findSessionsByStudentPaginated(studentId, data.courseId, 3);
+      const recentExcludedIds: string[] = [];
+      const recentExcludedTexts: string[] = [];
 
-      const batchQuestions = await adaptiveService.selectBatchQuestions(
-        priorityTopic.topicId,
-        targetRating,
-        excludedIds,
-        objectiveCount,
-        theoryCount,
-      );
+      for (const s of recentSessions) {
+        if (s.questionsServed && Array.isArray(s.questionsServed)) {
+          for (const q of s.questionsServed) {
+            const rawQ: any = q.questionId;
+            const qId = rawQ?._id || rawQ;
+            if (qId) recentExcludedIds.push(qId.toString());
+            if (rawQ && typeof rawQ === 'object' && rawQ.questionText) {
+              recentExcludedTexts.push(rawQ.questionText);
+            }
+          }
+        }
+      }
 
-      for (const question of batchQuestions) {
-        excludedIds.push(question._id.toString());
-        questionsServed.push({
-          submissionId: `batch_${crypto.randomUUID()}`,
-          questionId: question._id,
-          topicId: question.topicId,
-          difficulty: question.eloRating || 1,
-          gradingStatus: 'PENDING' // Placeholder status until submitted
-        });
+      const questionsServed: any[] = [];
+      const seenQuestionTexts = new Set<string>();
+      const seenQuestionIds = new Set<string>();
+
+      let remainingObjectives = objectiveCount;
+      let remainingTheory = theoryCount;
+
+      const consumeQuestions = (batch: any[]) => {
+        for (const question of batch) {
+          if (questionsServed.length >= allowedTotal) break;
+          const idStr = question._id.toString();
+          const norm = (question.questionText || '').trim().toLowerCase();
+          if (!seenQuestionIds.has(idStr) && !seenQuestionTexts.has(norm)) {
+            seenQuestionIds.add(idStr);
+            seenQuestionTexts.add(norm);
+
+            if (question.type === 'THEORY') {
+              remainingTheory = Math.max(0, remainingTheory - 1);
+            } else {
+              remainingObjectives = Math.max(0, remainingObjectives - 1);
+            }
+
+            questionsServed.push({
+              submissionId: `batch_${crypto.randomUUID()}`,
+              questionId: question._id,
+              topicId: question.topicId,
+              difficulty: question.eloRating || 1,
+              gradingStatus: 'PENDING',
+            });
+          }
+        }
+      };
+
+      const fetchFromTopic = async (topicId: string, neededMCQ: number, neededTheory: number) => {
+        if (neededMCQ <= 0 && neededTheory <= 0) return [];
+        const combinedExcludedIds = Array.from(new Set([...recentExcludedIds, ...seenQuestionIds]));
+        const combinedExcludedTexts = Array.from(new Set([...recentExcludedTexts, ...seenQuestionTexts]));
+
+        let batch = await adaptiveService.selectBatchQuestions(
+          topicId,
+          targetRating,
+          combinedExcludedIds,
+          neededMCQ,
+          neededTheory,
+          combinedExcludedTexts,
+        );
+
+        if (batch.length < (neededMCQ + neededTheory) && recentExcludedIds.length > 0) {
+          batch = await adaptiveService.selectBatchQuestions(
+            topicId,
+            targetRating,
+            Array.from(seenQuestionIds),
+            neededMCQ,
+            neededTheory,
+            Array.from(seenQuestionTexts),
+          );
+        }
+
+        return batch;
+      };
+
+      // 1. Initial attempt from priority topic
+      const initialBatch = await fetchFromTopic(priorityTopic.topicId, remainingObjectives, remainingTheory);
+      consumeQuestions(initialBatch);
+
+      // 2. If priority topic did not fulfill target, draw unique items from other topics in the course
+      if (questionsServed.length < allowedTotal) {
+        const otherTopics = ratings.filter((r) => r.topicId !== priorityTopic.topicId);
+        for (const otherTopic of otherTopics) {
+          if (questionsServed.length >= allowedTotal) break;
+          const moreBatch = await fetchFromTopic(otherTopic.topicId, remainingObjectives, remainingTheory);
+          consumeQuestions(moreBatch);
+        }
+      }
+
+      // 3. If mixed quotas have deficits (e.g. out of theory but MCQs exist), fill deficit from any topic
+      if (questionsServed.length < allowedTotal) {
+        for (const r of ratings) {
+          if (questionsServed.length >= allowedTotal) break;
+          const deficit = allowedTotal - questionsServed.length;
+          const flexBatch = await adaptiveService.selectBatchQuestions(
+            r.topicId,
+            targetRating,
+            Array.from(seenQuestionIds),
+            deficit,
+            deficit,
+            Array.from(seenQuestionTexts),
+          );
+          consumeQuestions(flexBatch);
+        }
+      }
+
+      if (questionsServed.length < allowedTotal && questionsServed.length > 0 && !clampedMessage) {
+        clampedMessage = `Only ${questionsServed.length} unique questions are currently available for this course. Your session has been prepared with all available unique items.`;
       }
 
       if (questionsServed.length === 0) {

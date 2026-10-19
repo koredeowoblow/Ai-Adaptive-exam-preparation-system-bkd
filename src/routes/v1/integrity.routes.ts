@@ -8,7 +8,7 @@ const router = Router();
 // Student-facing: log an integrity event (must be authenticated)
 router.post('/log', protect, asyncHandler(integrityController.logViolation));
 
-// Admin-facing: inspect violations (caller must be admin — add RBAC middleware here when needed)
+// Admin-facing: inspect violations (caller must be admin - add RBAC middleware here when needed)
 router.get('/', protect, asyncHandler(integrityController.listViolations));
 router.get('/session/:sessionId', protect, asyncHandler(integrityController.getSessionViolations));
 router.get('/student/:studentId', protect, asyncHandler(integrityController.getStudentViolations));

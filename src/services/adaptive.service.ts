@@ -20,7 +20,7 @@ export class AdaptiveService {
     questionId: string,
     isCorrect: boolean,
   ) {
-    // 1. Atomic counters for question statistics — always guaranteed (fire-and-forget safe)
+    // 1. Atomic counters for question statistics - always guaranteed (fire-and-forget safe)
     await this.updateQuestionStatistics(questionId, isCorrect);
 
     // 2. Unconditional atomic update of answer counters on MasteryRecord
@@ -31,7 +31,7 @@ export class AdaptiveService {
 
     await this.incrementAnswerCounters(masteryRecord._id.toString(), isCorrect);
 
-    // 3. Elo Conditional Updates — best-effort with bounded retry & exponential backoff
+    // 3. Elo Conditional Updates - best-effort with bounded retry & exponential backoff
     const MAX_RETRIES = 20;
     let masteryDone = false;
     let questionDone = false;
@@ -290,7 +290,7 @@ export class AdaptiveService {
    * @param theoryLimit    - Number of THEORY questions to fetch (Elo-optimal).
    *
    * The two halves are merged and shuffled after selection so their order isn't predictable.
-   * The Elo-based selection logic inside findManyOptimalQuestions is unchanged —
+   * The Elo-based selection logic inside findManyOptimalQuestions is unchanged -
    * these limits only constrain which question TYPE is eligible before Elo ranking.
    */
   async selectBatchQuestions(
@@ -299,23 +299,59 @@ export class AdaptiveService {
     excludedIds: string[],
     objectiveLimit: number,
     theoryLimit: number,
+    excludedTexts: string[] = [],
   ) {
-    const [mcqs, theories] = await Promise.all([
-      objectiveLimit > 0
-        ? questionRepository.findManyOptimalQuestions(topicId, targetElo, excludedIds, objectiveLimit, 'MULTIPLE_CHOICE')
-        : Promise.resolve([]),
-      theoryLimit > 0
-        ? questionRepository.findManyOptimalQuestions(topicId, targetElo, excludedIds, theoryLimit, 'THEORY')
-        : Promise.resolve([]),
-    ]);
+    const mcqs = objectiveLimit > 0
+      ? await questionRepository.findManyOptimalQuestions(
+          topicId,
+          targetElo,
+          excludedIds,
+          objectiveLimit,
+          'MULTIPLE_CHOICE',
+          excludedTexts,
+        )
+      : [];
+
+    const mcqTexts = mcqs.map(q => q.questionText).filter(Boolean);
+    const combinedExcludedTexts = [...excludedTexts, ...mcqTexts];
+    const combinedExcludedIds = [...excludedIds, ...mcqs.map(q => q._id.toString())];
+
+    const theories = theoryLimit > 0
+      ? await questionRepository.findManyOptimalQuestions(
+          topicId,
+          targetElo,
+          combinedExcludedIds,
+          theoryLimit,
+          'THEORY',
+          combinedExcludedTexts,
+        )
+      : [];
 
     const combined = [...mcqs, ...theories];
-    // Shuffle combined list so MCQs and theory items are interleaved
-    for (let i = combined.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [combined[i], combined[j]] = [combined[j], combined[i]];
+
+    // Final deduplication guard across both question types
+    const seenIds = new Set<string>();
+    const seenPrompts = new Set<string>(
+      excludedTexts.map(t => (t || '').trim().toLowerCase()).filter(Boolean)
+    );
+    const uniqueCombined: any[] = [];
+
+    for (const q of combined) {
+      const idStr = q._id.toString();
+      const norm = (q.questionText || '').trim().toLowerCase();
+      if (!seenIds.has(idStr) && !seenPrompts.has(norm)) {
+        seenIds.add(idStr);
+        seenPrompts.add(norm);
+        uniqueCombined.push(q);
+      }
     }
-    return combined;
+
+    // Shuffle combined list so MCQs and theory items are interleaved
+    for (let i = uniqueCombined.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [uniqueCombined[i], uniqueCombined[j]] = [uniqueCombined[j], uniqueCombined[i]];
+    }
+    return uniqueCombined;
   }
 
   private calculateExpectedProbability(

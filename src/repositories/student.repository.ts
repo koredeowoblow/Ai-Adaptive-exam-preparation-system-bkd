@@ -19,12 +19,19 @@ export class StudentRepository {
   async findByIdWithCourses(id: string) {
     return Student.findById(id)
       .populate('departmentId', 'name')
-      .populate('enrolledCourseIds', 'title code')
+      .populate('enrolledCourseIds', 'title code level')
       .select('-passwordHash');
   }
 
   async updateById(id: string, data: UpdateStudentDTO) {
-    return Student.findByIdAndUpdate(id, data, { new: true, runValidators: true }).select('-passwordHash');
+    const updateData: any = { ...data };
+    if (updateData.nextExamDate !== undefined) {
+      updateData.nextExamDate = updateData.nextExamDate ? new Date(updateData.nextExamDate) : null;
+    }
+    return Student.findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
+      .populate('departmentId', 'name')
+      .populate('enrolledCourseIds', 'title code level')
+      .select('-passwordHash');
   }
 
   async completeOnboarding(studentId: string, data: CompleteOnboardingDTO) {
@@ -40,6 +47,9 @@ export class StudentRepository {
     if (data.level) {
       updateOps.$set.level = data.level;
     }
+    if (data.nextExamDate !== undefined) {
+      updateOps.$set.nextExamDate = data.nextExamDate ? new Date(data.nextExamDate) : null;
+    }
     if (data.courseIds && data.courseIds.length > 0) {
       updateOps.$addToSet = {
         enrolledCourseIds: { $each: data.courseIds },
@@ -48,7 +58,7 @@ export class StudentRepository {
 
     return Student.findByIdAndUpdate(studentId, updateOps, { new: true, runValidators: true })
       .populate('departmentId', 'name')
-      .populate('enrolledCourseIds', 'title code')
+      .populate('enrolledCourseIds', 'title code level')
       .select('-passwordHash');
   }
 

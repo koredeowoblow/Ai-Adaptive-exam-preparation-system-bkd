@@ -33,13 +33,13 @@ export class AIController {
   };
 
   generateStudyPlan = async (req: Request, res: Response) => {
-    const { studentStats, department } = req.body;
+    const { studentStats, department, level, nextExamDate } = req.body;
 
     if (!studentStats) {
       return sendResponse(res, 400, 'Student stats are required to generate a study plan');
     }
 
-    const rawPlan = await groqProvider.generateStudyPlan(studentStats, department);
+    const rawPlan = await groqProvider.generateStudyPlan(studentStats, department, level, nextExamDate);
     let plan;
     try {
       plan = JSON.parse(rawPlan);
