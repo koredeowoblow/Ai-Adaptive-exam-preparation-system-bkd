@@ -36,7 +36,8 @@ export class CourseService {
       const { isStudent, student } = await this.isStudentUser(tokenUser);
       if (isStudent && student?.isOnboarded) {
         const studentDeptId = student.departmentId?._id ? student.departmentId._id.toString() : student.departmentId?.toString();
-        if (!studentDeptId || course.departmentId.toString() !== studentDeptId) {
+        const courseDeptId = course.departmentId?._id ? course.departmentId._id.toString() : course.departmentId?.toString();
+        if (!studentDeptId || courseDeptId !== studentDeptId) {
           throw new AppError('Forbidden: Course does not belong to your department', 403);
         }
       }
