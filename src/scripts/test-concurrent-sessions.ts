@@ -60,6 +60,60 @@ async function runConcurrencyTests() {
 
     console.log(`[Test Target] Student: ${student.email}, Course: ${course.code}`);
 
+    const payloadQuick = {
+      courseId,
+      totalQuestions: 10,
+      questionType: 'MIXED' as const,
+      mode: 'quick' as const,
+    };
+
+    // ─────────────────────────────────────────────────────────
+    // Phase 0: Test Completion & Re-start (Partial Index Verification)
+    // ─────────────────────────────────────────────────────────
+    console.log('\n--- PHASE 0: Session Completion & Re-Start Verification ---');
+    await PracticeSession.deleteMany({ studentId: student._id, courseId: course._id });
+
+    // 1. Start a session
+    const firstSessionResult = await practiceService.startSession(studentId, payloadQuick, tokenUser);
+    const firstSessionId = firstSessionResult.session._id.toString();
+    createdSessionIds.push(firstSessionId);
+    console.log(`[Phase 0] First session started: ${firstSessionId}`);
+
+    // 2. Complete the session
+    await PracticeSession.findByIdAndUpdate(firstSessionId, {
+      status: 'completed',
+      endedAt: new Date(),
+    });
+    console.log(`[Phase 0] First session marked completed.`);
+
+    // 3. Start a second session with identical student, course, and mode
+    const secondSessionResult = await practiceService.startSession(studentId, payloadQuick, tokenUser);
+    const secondSessionId = secondSessionResult.session._id.toString();
+    createdSessionIds.push(secondSessionId);
+    console.log(`[Phase 0] Second session started successfully: ${secondSessionId}`);
+
+    if (firstSessionId === secondSessionId) {
+      throw new Error(`[Phase 0 FAILED] Second session re-used completed session ID instead of creating new!`);
+    }
+
+    const completedCount = await PracticeSession.countDocuments({
+      studentId: student._id,
+      courseId: course._id,
+      mode: 'quick',
+      status: 'completed',
+    });
+    const activeCount = await PracticeSession.countDocuments({
+      studentId: student._id,
+      courseId: course._id,
+      mode: 'quick',
+      status: 'active',
+    });
+
+    if (completedCount !== 1 || activeCount !== 1) {
+      throw new Error(`[Phase 0 FAILED] Expected 1 completed and 1 active session. Found completed: ${completedCount}, active: ${activeCount}`);
+    }
+    console.log('✓ [Phase 0 PASSED] Completing a session and starting another for the same student, course, and mode succeeds seamlessly!');
+
     // ─────────────────────────────────────────────────────────
     // Phase 1: Test Database-Level Unique Partial Index ALONE
     // (In-memory lock completely bypassed)
@@ -69,13 +123,6 @@ async function runConcurrencyTests() {
 
     // Clear any active sessions first
     await PracticeSession.deleteMany({ studentId: student._id, courseId: course._id, status: 'active' });
-
-    const payloadQuick = {
-      courseId,
-      totalQuestions: 10,
-      questionType: 'MIXED' as const,
-      mode: 'quick' as const,
-    };
 
     console.log('[Phase 1] Firing 5 concurrent startSession requests straight at the database...');
     const dbTestResults = await Promise.all([

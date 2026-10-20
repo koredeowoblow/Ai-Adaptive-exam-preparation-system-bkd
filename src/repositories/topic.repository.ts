@@ -1,4 +1,6 @@
+import mongoose from 'mongoose';
 import { Topic } from '../models/topic.model';
+import { Course } from '../models/course.model';
 import { CreateTopicDTO, UpdateTopicDTO } from '../types/topic.types';
 import { cacheService } from '../utils/cache';
 
@@ -17,10 +19,16 @@ export class TopicRepository {
 
   async findByCourseId(courseId: string, limit: number = 20, cursor?: string) {
     return cacheService.getOrSetSingleFlight(
-      `topics:course:${courseId}:limit:${limit}:cursor:${cursor || 'null'}`,
+      `topics:course:${courseId.toLowerCase().trim()}:limit:${limit}:cursor:${cursor || 'null'}`,
       3600, // 1 hour
       async () => {
-        const filter: any = { courseId };
+        let resolvedCourseId = courseId;
+        if (!mongoose.isValidObjectId(courseId)) {
+          const course = await Course.findOne({ code: courseId.toUpperCase().trim() });
+          if (!course) return [];
+          resolvedCourseId = course._id.toString();
+        }
+        const filter: any = { courseId: resolvedCourseId };
         if (cursor) filter._id = { $lt: cursor };
         return Topic.find(filter).sort({ _id: -1 }).limit(limit);
       }

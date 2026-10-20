@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Course } from '../models/course.model';
 import { CreateCourseDTO, UpdateCourseDTO } from '../types/course.types';
 import { cacheService } from '../utils/cache';
@@ -21,9 +22,13 @@ export class CourseRepository {
   }
 
   async findById(id: string) {
-    const key = `courses:id:${id}`;
+    const normalizedKey = id.toLowerCase().trim();
+    const key = `courses:id:${normalizedKey}`;
     return cacheService.getOrSetSingleFlight(key, this.CACHE_TTL, async () => {
-      return Course.findById(id).populate('departmentId', 'name');
+      if (mongoose.isValidObjectId(id)) {
+        return Course.findById(id).populate('departmentId', 'name');
+      }
+      return Course.findOne({ code: id.toUpperCase().trim() }).populate('departmentId', 'name');
     });
   }
 
