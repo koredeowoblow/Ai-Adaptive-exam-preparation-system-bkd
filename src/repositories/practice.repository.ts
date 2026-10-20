@@ -65,6 +65,17 @@ export class PracticeRepository {
       { new: true }
     );
   }
+
+  async cancelSession(sessionId: string) {
+    return PracticeSession.findByIdAndUpdate(
+      sessionId,
+      {
+        status: 'FAILED',
+        endedAt: new Date(),
+      },
+      { new: true }
+    );
+  }
   async updateAnswerGrade(sessionId: string, submissionId: string, isCorrect: boolean, score: number, feedback: string) {
     return PracticeSession.findOneAndUpdate(
       {

@@ -78,7 +78,11 @@ export class PracticeService {
       const isTypeMismatched = questionType !== 'MIXED' && session.questionTypeMix !== questionType && (session.questionsAnswered === 0);
 
       if (isExpired || isUndersized || isTypeMismatched) {
-        await practiceRepository.endSession(session._id.toString(), session.score || 0);
+        if (session.questionsAnswered === 0) {
+          await practiceRepository.cancelSession(session._id.toString());
+        } else {
+          await practiceRepository.endSession(session._id.toString(), session.score || 0);
+        }
         session = null;
       }
     }
