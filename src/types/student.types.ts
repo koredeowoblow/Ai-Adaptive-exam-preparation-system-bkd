@@ -6,7 +6,7 @@ export interface IStudent {
   passwordHash: string;
   departmentId?: Types.ObjectId;
   level?: '100L' | '200L' | '300L' | '400L' | '500L';
-  nextExamDate?: Date | null;
+  nextExamDate?: string | null;
   enrolledCourseIds: Types.ObjectId[];
   roleIds: Types.ObjectId[];
   isOnboarded: boolean;
@@ -26,7 +26,7 @@ export interface UpdateStudentDTO {
   name?: string;
   departmentId?: string;
   level?: '100L' | '200L' | '300L' | '400L' | '500L';
-  nextExamDate?: Date | string | null;
+  nextExamDate?: string | null;
   enrolledCourseIds?: string[];
   isOnboarded?: boolean;
 }
@@ -34,6 +34,13 @@ export interface UpdateStudentDTO {
 export interface CompleteOnboardingDTO {
   departmentId?: string;
   level?: '100L' | '200L' | '300L' | '400L' | '500L';
-  nextExamDate?: Date | string | null;
+  nextExamDate?: string | null;
   courseIds?: string[];
 }
+
+export interface PromoteStudentDTO {
+  targetLevel: '100L' | '200L' | '300L' | '400L' | '500L';
+  courseIds?: string[];
+  nextExamDate?: string | null;
+}
+

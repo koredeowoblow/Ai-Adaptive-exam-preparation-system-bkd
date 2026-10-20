@@ -1,5 +1,6 @@
 import Groq from 'groq-sdk';
 import { env } from '../config/env';
+import { validateExamDate, calculateDaysRemainingInLagos } from '../utils/dateValidation';
 
 export class GroqProvider {
   private groq: Groq;
@@ -221,9 +222,11 @@ Use examples where helpful. Keep responses focused, encouraging, and well-struct
   async generateStudyPlan(studentStats: string, department?: string, level?: string, nextExamDate?: string): Promise<string> {
     let examContext = 'No upcoming exam date specified (steady pacing).';
     if (nextExamDate) {
-      const examTime = new Date(nextExamDate).getTime();
-      const diffDays = Math.max(0, Math.ceil((examTime - Date.now()) / (1000 * 60 * 60 * 24)));
-      examContext = `Upcoming Exam Date: ${new Date(nextExamDate).toDateString()} (${diffDays} days remaining until exam). Calibrate daily study intensity and revision checkpoints towards this deadline.`;
+      const validation = validateExamDate(nextExamDate);
+      if (validation.isValid && validation.cleanDate) {
+        const diffDays = calculateDaysRemainingInLagos(validation.cleanDate);
+        examContext = `Upcoming Exam Date: ${validation.cleanDate} (${diffDays} days remaining until exam in Lagos time). Calibrate daily study intensity and revision checkpoints towards this deadline.`;
+      }
     }
 
     const prompt = `You are an expert academic advisor for Nigerian university students.

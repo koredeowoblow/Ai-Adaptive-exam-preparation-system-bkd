@@ -18,6 +18,13 @@ export class StudentController {
     return sendResponse(res, 200, 'Profile updated successfully', profile);
   };
 
+  promote = async (req: Request, res: Response) => {
+    // @ts-ignore
+    const studentId = req.user.id || req.user._id;
+    const profile = await studentService.promoteStudent(studentId, req.body);
+    return sendResponse(res, 200, 'Student promoted to next academic level successfully', profile);
+  };
+
   completeOnboarding = async (req: Request, res: Response) => {
     // @ts-ignore
     const studentId = req.user.id || req.user._id;

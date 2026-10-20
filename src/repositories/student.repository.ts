@@ -26,7 +26,7 @@ export class StudentRepository {
   async updateById(id: string, data: UpdateStudentDTO) {
     const updateData: any = { ...data };
     if (updateData.nextExamDate !== undefined) {
-      updateData.nextExamDate = updateData.nextExamDate ? new Date(updateData.nextExamDate) : null;
+      updateData.nextExamDate = updateData.nextExamDate ? updateData.nextExamDate.trim() : null;
     }
     return Student.findByIdAndUpdate(id, updateData, { new: true, runValidators: true })
       .populate('departmentId', 'name')
@@ -48,7 +48,7 @@ export class StudentRepository {
       updateOps.$set.level = data.level;
     }
     if (data.nextExamDate !== undefined) {
-      updateOps.$set.nextExamDate = data.nextExamDate ? new Date(data.nextExamDate) : null;
+      updateOps.$set.nextExamDate = data.nextExamDate ? data.nextExamDate.trim() : null;
     }
     if (data.courseIds && data.courseIds.length > 0) {
       updateOps.$addToSet = {
@@ -57,6 +57,39 @@ export class StudentRepository {
     }
 
     return Student.findByIdAndUpdate(studentId, updateOps, { new: true, runValidators: true })
+      .populate('departmentId', 'name')
+      .populate('enrolledCourseIds', 'title code level')
+      .select('-passwordHash');
+  }
+
+  async atomicPromote(
+    studentId: string,
+    currentLevel: string,
+    targetLevel: string,
+    courseIdsToAdd: string[],
+    nextExamDate?: string | null
+  ) {
+    const setOps: any = { level: targetLevel };
+    if (nextExamDate !== undefined) {
+      setOps.nextExamDate = nextExamDate ? nextExamDate.trim() : null;
+    }
+
+    const updateOps: any = {
+      $set: setOps,
+    };
+
+    if (courseIdsToAdd && courseIdsToAdd.length > 0) {
+      updateOps.$addToSet = {
+        enrolledCourseIds: { $each: courseIdsToAdd },
+      };
+    }
+
+    // Atomic conditional update on currentLevel prevents race conditions
+    return Student.findOneAndUpdate(
+      { _id: studentId as any, level: currentLevel as any },
+      updateOps,
+      { new: true, runValidators: true }
+    )
       .populate('departmentId', 'name')
       .populate('enrolledCourseIds', 'title code level')
       .select('-passwordHash');

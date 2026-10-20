@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { groqProvider } from '../providers/groq.provider';
 import { aiService } from '../services/ai.service';
 import { sendResponse } from '../utils/sendResponse';
+import { validateExamDate } from '../utils/dateValidation';
 
 export class AIController {
   /**
@@ -39,7 +40,16 @@ export class AIController {
       return sendResponse(res, 400, 'Student stats are required to generate a study plan');
     }
 
-    const rawPlan = await groqProvider.generateStudyPlan(studentStats, department, level, nextExamDate);
+    let cleanDate: string | undefined = undefined;
+    if (nextExamDate !== undefined && nextExamDate !== null && nextExamDate !== '') {
+      const dateCheck = validateExamDate(nextExamDate);
+      if (!dateCheck.isValid) {
+        return sendResponse(res, 400, dateCheck.error || 'Invalid exam date');
+      }
+      cleanDate = dateCheck.cleanDate || undefined;
+    }
+
+    const rawPlan = await groqProvider.generateStudyPlan(studentStats, department, level, cleanDate);
     let plan;
     try {
       plan = JSON.parse(rawPlan);

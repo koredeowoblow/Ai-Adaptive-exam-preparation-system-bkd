@@ -30,8 +30,9 @@ const StudentSchema = new Schema<IStudentDocument>(
       default: '100L',
     },
     nextExamDate: {
-      type: Date,
+      type: String,
       default: null,
+      trim: true,
     },
     enrolledCourseIds: [
       {
