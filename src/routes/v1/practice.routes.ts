@@ -78,6 +78,7 @@ router.get('/:id', asyncHandler(practiceController.getSession));
 router.post('/:id/anticheat-event', validateRequest(logAntiCheatEventsSchema), asyncHandler(practiceController.logAntiCheatEvents));
 
 router.post('/:id/submit-batch', /*practiceLimiter,*/ validateRequest(submitBatchAnswersSchema), asyncHandler(practiceController.submitBatchAnswers));
+router.post('/:id/retry', asyncHandler(practiceController.retrySession));
 router.post('/:id/answers/:answerId/explain', practiceLimiter, asyncHandler(practiceController.requestExplanation));
 router.get('/', asyncHandler(practiceController.listSessions));
 

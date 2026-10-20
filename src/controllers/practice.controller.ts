@@ -44,6 +44,14 @@ export class PracticeController {
     return sendResponse(res, 200, 'Batch answers submitted successfully', result);
   };
 
+  retrySession = async (req: Request, res: Response) => {
+    // @ts-ignore
+    const studentId = req.user.id;
+    const sessionId = req.params.id as string;
+    const result = await practiceService.retryGrading(studentId, sessionId);
+    return sendResponse(res, 200, 'Grading job requeued successfully', result);
+  };
+
   listSessions = async (req: Request, res: Response) => {
     // @ts-ignore
     const tokenUser = req.user;

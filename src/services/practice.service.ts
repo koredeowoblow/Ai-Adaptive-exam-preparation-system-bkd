@@ -404,6 +404,39 @@ export class PracticeService {
       status: finalizedSession?.status || 'PENDING_GRADING'
     };
   }
+
+  async retryGrading(studentId: string, sessionId: string) {
+    const session = await practiceRepository.findById(sessionId);
+    if (!session) throw new AppError('Session not found', 404);
+    const sessionStudentId = (session.studentId?._id || session.studentId)?.toString();
+    if (sessionStudentId !== studentId.toString()) {
+      throw new AppError('Forbidden', 403);
+    }
+    if (session.status !== 'FAILED') {
+      throw new AppError('Only failed sessions can be retried', 400);
+    }
+
+    const answers = (session.questionsServed || [])
+      .filter((q: any) => q.selectedAnswer !== undefined || q.writtenAnswer !== undefined)
+      .map((q: any) => ({
+        questionId: (q.questionId?._id || q.questionId).toString(),
+        selectedAnswer: q.selectedAnswer,
+        writtenAnswer: q.writtenAnswer,
+        timeTaken: q.timeTaken || 0,
+      }));
+
+    session.status = 'PENDING_GRADING';
+    await session.save();
+
+    await examQueue.add('finalizeExam', {
+      sessionId,
+      studentId: sessionStudentId,
+      answers,
+    });
+
+    return session;
+  }
+
   calculateTrustScore(events: any[]): number {
     let score = 100;
     let tabSwitchCount = 0;
