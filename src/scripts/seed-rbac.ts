@@ -18,6 +18,7 @@ const DEFAULT_PERMISSIONS = [
   { resource: 'permission', action: 'create', slug: 'permission.create', name: 'Create Permissions' },
   { resource: 'user', action: 'assign-role', slug: 'user.assign-role', name: 'Assign User Roles' },
   { resource: 'user', action: 'remove-role', slug: 'user.remove-role', name: 'Remove User Roles' },
+  { resource: 'question', action: 'read', slug: 'question.read', name: 'Read Questions' },
   { resource: 'question', action: 'create', slug: 'question.create', name: 'Create Questions' },
   { resource: 'question', action: 'update', slug: 'question.update', name: 'Update Questions' },
   { resource: 'question', action: 'delete', slug: 'question.delete', name: 'Delete Questions' },

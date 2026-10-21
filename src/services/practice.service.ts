@@ -308,13 +308,19 @@ export class PracticeService {
     const session = sessionDoc.toObject();
     if (tokenUser.role === 'student' || tokenUser.type === 'student') {
       delete (session as any).antiCheatEvents; // Exclude sensitive audit logs from student client response
-      if (sessionDoc.status === 'active') {
+      if (sessionDoc.status === 'active' || sessionDoc.status === 'PENDING_GRADING') {
         (session.questionsServed || []).forEach((q: any) => {
           if (q.questionId && typeof q.questionId === 'object') {
             delete q.questionId.correctAnswer;
             delete q.questionId.explanation;
             delete q.questionId.modelAnswer;
             delete q.questionId.rubric;
+            if (Array.isArray(q.questionId.subParts)) {
+              q.questionId.subParts.forEach((sp: any) => {
+                delete sp.modelAnswer;
+                delete sp.rubric;
+              });
+            }
           }
         });
       }

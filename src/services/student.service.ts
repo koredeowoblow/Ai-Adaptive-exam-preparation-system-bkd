@@ -183,8 +183,20 @@ export class StudentService {
     return formatStudentResponse(updated);
   }
 
-  async updateStudent(id: string, data: UpdateStudentDTO) {
-    const student = await studentRepository.updateById(id, data);
+  async updateStudent(id: string, data: UpdateStudentDTO | any) {
+    if (!mongoose.isValidObjectId(id)) {
+      throw new AppError('Invalid student ID format', 400);
+    }
+    // Whitelist allowed fields to prevent privilege escalation or data corruption
+    const allowedUpdates: any = {};
+    if (data.name !== undefined) allowedUpdates.name = data.name;
+    if (data.level !== undefined) allowedUpdates.level = data.level;
+    if (data.departmentId !== undefined) allowedUpdates.departmentId = data.departmentId;
+    if (data.isOnboarded !== undefined) allowedUpdates.isOnboarded = data.isOnboarded;
+    if (data.nextExamDate !== undefined) allowedUpdates.nextExamDate = data.nextExamDate;
+    if (data.enrolledCourseIds !== undefined) allowedUpdates.enrolledCourseIds = data.enrolledCourseIds;
+
+    const student = await studentRepository.updateById(id, allowedUpdates);
     if (!student) {
       throw new AppError('Student not found', 404);
     }

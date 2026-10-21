@@ -59,3 +59,17 @@ export const updateCourseExamDatesSchema = z.object({
   ]),
 });
 
+export const adminUpdateStudentSchema = z.object({
+  params: z.object({
+    id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid student ID format'),
+  }),
+  body: z.object({
+    name: z.string().min(2, 'Name must be at least 2 characters').optional(),
+    departmentId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid department ID format').nullable().optional(),
+    level: z.enum(['100L', '200L', '300L', '400L', '500L']).optional(),
+    nextExamDate: examDateSchema,
+    enrolledCourseIds: z.array(z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid course ID format')).optional(),
+    isOnboarded: z.boolean().optional(),
+  }).strict(),
+});
+

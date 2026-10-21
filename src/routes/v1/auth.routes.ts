@@ -8,9 +8,10 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 const authLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10, // Limit each IP to 10 requests per windowMs
+  max: 15, // Limit each IP to 15 authentication requests per minute
   message: { success: false, message: 'Too many authentication attempts, please try again later.' },
   keyGenerator: (req) => ipKeyGenerator(req.ip || '127.0.0.1'),
+  skip: () => process.env.NODE_ENV === 'test',
 });
 
 const router = Router();
@@ -44,7 +45,7 @@ const router = Router();
  *       400:
  *         description: Validation error or Email already exists
  */
-router.post('/register', /*authLimiter,*/ validateRequest(registerSchema), asyncHandler(authController.register));
+router.post('/register', authLimiter, validateRequest(registerSchema), asyncHandler(authController.register));
 
 /**
  * @swagger
@@ -72,7 +73,7 @@ router.post('/register', /*authLimiter,*/ validateRequest(registerSchema), async
  *       401:
  *         description: Invalid credentials
  */
-router.post('/login', /*authLimiter,*/ validateRequest(loginSchema), asyncHandler(authController.login));
+router.post('/login', authLimiter, validateRequest(loginSchema), asyncHandler(authController.login));
 
 /**
  * @swagger

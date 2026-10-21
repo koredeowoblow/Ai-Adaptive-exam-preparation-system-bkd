@@ -1,7 +1,14 @@
 import { Router } from 'express';
 import { studentController } from '../../controllers/student.controller';
 import { validateRequest } from '../../middlewares/validateRequest';
-import { updateStudentProfileSchema, completeOnboardingSchema, enrollCoursesSchema, promoteStudentSchema, updateCourseExamDatesSchema } from '../../validators/student.validator';
+import { 
+  updateStudentProfileSchema, 
+  completeOnboardingSchema, 
+  enrollCoursesSchema, 
+  promoteStudentSchema, 
+  updateCourseExamDatesSchema,
+  adminUpdateStudentSchema 
+} from '../../validators/student.validator';
 import { protect } from '../../middlewares/auth.middleware';
 import { asyncHandler } from '../../utils/asyncHandler';
 
@@ -72,7 +79,7 @@ import { authorize } from '../../middlewares/rbac.middleware';
 // Admin routes
 router.get('/', authorize('student.read'), asyncHandler(studentController.getAll));
 router.get('/:id', authorize('student.read'), asyncHandler(studentController.getStudentById));
-router.put('/:id', authorize('student.update'), asyncHandler(studentController.updateStudentByAdmin));
+router.put('/:id', authorize('student.update'), validateRequest(adminUpdateStudentSchema), asyncHandler(studentController.updateStudentByAdmin));
 router.delete('/:id', authorize('student.delete'), asyncHandler(studentController.deleteStudent));
 
 export const studentRoutes = router;
