@@ -21,7 +21,7 @@ export class AnalyticsService {
     const [topics, enrolledStudents, sessions, masteryRecords] = await Promise.all([
       Topic.find({ courseId }).sort({ order: 1 }).lean(),
       Student.find({ enrolledCourseIds: courseId }).lean(),
-      PracticeSession.find({ courseId }).sort({ createdAt: -1 }).limit(100).populate('studentId', 'name email level').lean(),
+      PracticeSession.find({ courseId, isArchived: { $ne: true } }).sort({ createdAt: -1 }).limit(100).populate('studentId', 'name email level').lean(),
       MasteryRecord.find({ courseId }).lean(),
     ]);
 
@@ -248,7 +248,7 @@ export class AnalyticsService {
 
     const [questions, sessions] = await Promise.all([
       Question.find({ topicId: { $in: topicIds } }).lean(),
-      PracticeSession.find({ courseId: { $in: courseIds } }).sort({ createdAt: -1 }).limit(150).populate('studentId', 'name email level').lean(),
+      PracticeSession.find({ courseId: { $in: courseIds }, isArchived: { $ne: true } }).sort({ createdAt: -1 }).limit(150).populate('studentId', 'name email level').lean(),
     ]);
 
     const completedSessions = sessions.filter((s) => s.status === 'completed');

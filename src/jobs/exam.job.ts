@@ -280,7 +280,7 @@ export const processExamJob = async (job: Job | any) => {
     const finalScore = totalQuestions > 0 ? (correctAnswersCount / totalQuestions) * 100 : 0;
 
     const finalizedSession = await PracticeSession.findOneAndUpdate(
-      { _id: sessionId, status: 'PENDING_GRADING' },
+      { _id: sessionId, status: { $in: ['PENDING_GRADING', 'active'] } },
       {
         $set: {
           status: 'completed',
@@ -295,7 +295,7 @@ export const processExamJob = async (job: Job | any) => {
 
     if (finalizedSession) {
       sessionFinalized = true;
-      return { status: 'SUCCESS', session: finalizedSession };
+      return { status: 'SUCCESS' };
     } else {
       sessionFinalized = true;
       return { status: 'ALREADY_FINALIZED' };

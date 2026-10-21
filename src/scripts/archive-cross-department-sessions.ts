@@ -27,17 +27,9 @@ import { PracticeSession } from '../models/practice.model';
 import { Student } from '../models/student.model';
 import { Course } from '../models/course.model';
 
-async function main() {
-  const isApply = process.argv.includes('--apply');
-  const mongoUri = process.env.MONGODB_URI;
-
-  if (!mongoUri) {
-    console.error('Error: MONGODB_URI environment variable is not defined.');
-    process.exit(1);
-  }
-
-  console.log(`Connecting to database...`);
-  await mongoose.connect(mongoUri);
+export async function scanAndArchiveCrossDeptSessions(options: { isApply?: boolean; shouldDisconnect?: boolean } = {}) {
+  const isApply = options.isApply ?? process.argv.includes('--apply');
+  const shouldDisconnect = options.shouldDisconnect ?? false;
 
   try {
     console.log(`Scanning practice sessions for cross-department references...`);
@@ -99,7 +91,7 @@ async function main() {
 
     if (crossDeptSessions.length === 0) {
       console.log('No cross-department, unenrolled sessions found.');
-      return;
+      return { crossDeptSessions: [], isApply };
     }
 
     crossDeptSessions.forEach((item, index) => {
@@ -134,13 +126,33 @@ async function main() {
       console.log(`Successfully archived ${updateResult.modifiedCount} session(s).`);
       console.log(`All original session and answer records are preserved in place with isArchived: true.\n`);
     }
+
+    return { crossDeptSessions, isApply };
   } catch (err) {
     console.error('Error during execution:', err);
-    process.exit(1);
+    throw err;
   } finally {
-    await mongoose.disconnect();
-    console.log('Disconnected from database.');
+    if (shouldDisconnect) {
+      await mongoose.disconnect();
+      console.log('Disconnected from database.');
+    }
   }
 }
 
-main();
+async function main() {
+  const mongoUri = process.env.MONGODB_URI;
+  if (!mongoUri) {
+    console.error('Error: MONGODB_URI environment variable is not defined.');
+    process.exit(1);
+  }
+  console.log('Connecting to database...');
+  await mongoose.connect(mongoUri);
+  await scanAndArchiveCrossDeptSessions({ shouldDisconnect: true });
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

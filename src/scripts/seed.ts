@@ -1,6 +1,9 @@
 import dns from 'dns';
 dns.setServers(['8.8.8.8', '1.1.1.1']);
 
+import dotenv from 'dotenv';
+dotenv.config();
+
 import mongoose from "mongoose";
 import { logger } from "../utils/logger";
 import { connectDatabase } from "../config/db";
@@ -48,7 +51,20 @@ class MockRes {
   }
 }
 
-async function seed() {
+export async function seed() {
+  if (process.env.NODE_ENV === 'production') {
+    logger.error("Refusing to run seed script in production environment.");
+    throw new Error("Refusing to run seed script in production environment.");
+  }
+
+  const adminPassword = process.env.DEMO_ADMIN_PASSWORD;
+  const studentPassword = process.env.DEMO_STUDENT_PASSWORD;
+
+  if (!adminPassword || !studentPassword) {
+    logger.error("Refusing to seed: DEMO_ADMIN_PASSWORD and DEMO_STUDENT_PASSWORD environment variables must be configured.");
+    throw new Error("DEMO_ADMIN_PASSWORD and DEMO_STUDENT_PASSWORD environment variables must be configured.");
+  }
+
   try {
     logger.info("Connecting to MongoDB...");
     await connectDatabase();
@@ -109,7 +125,7 @@ async function seed() {
     await authController.register(
       mockReq(null, {
         email: "admin@eduadapt.com",
-        password: "AdminPassword123!",
+        password: adminPassword,
         name: "System Administrator",
       }) as Request,
       adminAuthRes as unknown as Response,
@@ -131,7 +147,7 @@ async function seed() {
     await authController.register(
       mockReq(null, {
         email: "student@eduadapt.com",
-        password: "StudentPassword123!",
+        password: studentPassword,
         name: "Demo Student",
       }) as Request,
       studentAuthRes as unknown as Response,

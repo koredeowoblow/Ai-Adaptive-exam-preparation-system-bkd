@@ -45,6 +45,11 @@ class MockRes {
 }
 
 export const seedRbac = async () => {
+  if (process.env.NODE_ENV === 'production') {
+    logger.error("Refusing to run seed-rbac script in production environment.");
+    throw new Error("Refusing to run seed-rbac script in production environment.");
+  }
+
   try {
     if (process.env.SUPERADMIN_BOOTSTRAP_ENABLED !== 'true') {
       logger.info('RBAC Bootstrap skipped');
@@ -98,17 +103,22 @@ export const seedRbac = async () => {
 
     // 3. Assign SuperAdmin to configured user
     const superAdminEmail = process.env.SUPERADMIN_EMAIL;
+    const superAdminPassword = process.env.SUPERADMIN_PASSWORD;
     if (superAdminEmail) {
+      if (!superAdminPassword) {
+        logger.error('SUPERADMIN_PASSWORD environment variable must be set');
+        throw new Error('SUPERADMIN_PASSWORD environment variable is required');
+      }
       // Create the user if they don't exist
       const authRes = new MockRes();
       await authController.register(
         mockReq(null, {
           email: superAdminEmail,
-          password: 'SuperAdminPassword123!',
+          password: superAdminPassword,
           name: 'System Admin'
         }) as Request,
         authRes as unknown as Response
-    );
+      );
       
       const user = authRes.responseData?.data?.user;
       if (user && superAdminRole) {
@@ -129,8 +139,11 @@ export const seedRbac = async () => {
     logger.info('RBAC Bootstrap completed successfully!');
   } catch (error) {
     logger.error('RBAC Bootstrap failed:', error);
+    throw error;
   } finally {
-    mongoose.disconnect();
+    if (require.main === module) {
+      await mongoose.disconnect();
+    }
   }
 };
 

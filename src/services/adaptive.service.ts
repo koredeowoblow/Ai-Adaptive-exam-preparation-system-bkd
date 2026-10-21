@@ -339,9 +339,10 @@ export class AdaptiveService {
     for (const q of combined) {
       const idStr = q._id.toString();
       const norm = (q.questionText || '').trim().toLowerCase();
-      if (!seenIds.has(idStr) && !seenPrompts.has(norm)) {
+      const isDuplicatePrompt = norm ? seenPrompts.has(norm) : false;
+      if (!seenIds.has(idStr) && !isDuplicatePrompt) {
         seenIds.add(idStr);
-        seenPrompts.add(norm);
+        if (norm) seenPrompts.add(norm);
         uniqueCombined.push(q);
       }
     }

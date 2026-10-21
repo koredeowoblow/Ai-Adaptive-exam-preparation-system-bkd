@@ -9,6 +9,7 @@ export class AnalyticsRepository {
     const totalCourses = await Course.countDocuments();
     
     const result = await PracticeSession.aggregate([
+      { $match: { isArchived: { $ne: true } } },
       { $group: { _id: null, totalAnswered: { $sum: '$questionsAnswered' } } }
     ]);
 
@@ -21,7 +22,7 @@ export class AnalyticsRepository {
     const totalStudents = await Student.countDocuments({ enrolledCourseIds: courseId });
     
     const sessionStats = await PracticeSession.aggregate([
-      { $match: { courseId: courseId /* might need to cast to ObjectId */ } },
+      { $match: { courseId: courseId, isArchived: { $ne: true } } },
       {
         $group: {
           _id: '$status',

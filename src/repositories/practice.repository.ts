@@ -25,7 +25,7 @@ export class PracticeRepository {
   }
 
   async findSessionsByStudentPaginated(studentId: string, courseId?: string, limit: number = 10, cursor?: string) {
-    const query: any = { studentId };
+    const query: any = { studentId, isArchived: { $ne: true } };
     if (courseId) query.courseId = courseId;
     if (cursor) query._id = { $lt: cursor };
 
@@ -98,7 +98,7 @@ export class PracticeRepository {
   }
 
   async findRecentCompletedSessions(studentId: string, limit: number = 5) {
-    return PracticeSession.find({ studentId, status: 'completed' })
+    return PracticeSession.find({ studentId, status: 'completed', isArchived: { $ne: true } })
       .sort({ endedAt: -1 })
       .limit(limit)
       .populate('courseId', 'title')
@@ -107,7 +107,7 @@ export class PracticeRepository {
 
   async getStudentAnalyticsTrend(studentId: string) {
     // Return last 20 sessions for trend
-    return PracticeSession.find({ studentId, status: 'completed' })
+    return PracticeSession.find({ studentId, status: 'completed', isArchived: { $ne: true } })
       .sort({ endedAt: -1 })
       .limit(20)
       .select('score endedAt questionsAnswered correctAnswers');
@@ -135,7 +135,7 @@ export class PracticeRepository {
       sortOrder = 'desc',
     } = options;
 
-    const filter: any = {};
+    const filter: any = { isArchived: { $ne: true } };
     if (courseId) filter.courseId = courseId;
     if (studentId) filter.studentId = studentId;
     if (status && status !== 'all') filter.status = status;
