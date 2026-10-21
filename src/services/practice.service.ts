@@ -8,6 +8,7 @@ import { courseService } from './course.service';
 import { aiQueue } from '../jobs/ai.job';
 import { examQueue } from '../jobs/exam.job';
 import { getLevelConfig } from '../config/academicLevels';
+import { PracticeSession } from '../models/practice.model';
 import crypto from 'crypto';
 
 export class PracticeService {
@@ -319,6 +320,19 @@ export class PracticeService {
       }
     }
 
+    // Explicit state contract: never return 0% for pending/ungraded work
+    session.isGradingPending = session.status === 'PENDING_GRADING';
+    session.gradingState = session.status;
+    if (session.status !== 'completed') {
+      session.score = null;
+      (session.questionsServed || []).forEach((q: any) => {
+        if (q.gradingStatus !== 'GRADED') {
+          q.score = null;
+          q.correct = null;
+        }
+      });
+    }
+
     const totalServed = session.questionsServed?.length || 0;
     const questionsSummary = (session.questionsServed || []).map((q: any) => ({
       correct: q.correct,
@@ -349,32 +363,23 @@ export class PracticeService {
       throw new AppError('Active session not found', 404);
     }
 
-    let correctAnswersCount = session.correctAnswers;
-    let questionsAnsweredCount = session.questionsAnswered;
-
-    // 1. Fetch all questions in a single query
-    const questionIds = data.answers.map(a => a.questionId);
-    const questions = await questionRepository.findManyByIds(questionIds);
-    const questionMap = new Map(questions.map(q => [q._id.toString(), q]));
-
-    // 2. Timer enforcement (Time Budget)
+    // 1. Timer enforcement (Time Budget)
     const elapsedSeconds = (Date.now() - session.startedAt.getTime()) / 1000;
     if (session.timeBudget && elapsedSeconds > session.timeBudget + 10) {
       // Late submission, but we don't reject it - just mark it.
       session.lateSubmission = true;
     }
 
-    // 3. Mark session as PENDING_GRADING and enqueue job
-
-
-    // Instead of synchronous grading, save the state so the worker can grade it.
+    // 2. Mark session as PENDING_GRADING, record questionsAnswered at submit
+    session.questionsAnswered = data.answers.length;
     session.status = 'PENDING_GRADING';
     session.endedAt = new Date();
 
-    // Save answers directly onto the session temporarily for the worker to read. 
-    // We update the placeholder objects to persist the client's answers
+    // Save answers directly onto the session placeholders for the worker to read.
     for (const ans of data.answers) {
-      const existingAns = session.questionsServed.find((q: any) => (q.questionId?._id || q.questionId).toString() === ans.questionId);
+      const existingAns = session.questionsServed.find(
+        (q: any) => (q.questionId?._id || q.questionId).toString() === ans.questionId
+      );
       if (existingAns) {
         existingAns.selectedAnswer = ans.selectedAnswer;
         existingAns.writtenAnswer = ans.writtenAnswer;
@@ -399,25 +404,62 @@ export class PracticeService {
     };
   }
 
-  async retryGrading(studentId: string, sessionId: string) {
+  async requeueFailedGrading(sessionId: string, studentId?: string) {
     const session = await practiceRepository.findById(sessionId);
     if (!session) throw new AppError('Session not found', 404);
+
     const sessionStudentId = (session.studentId?._id || session.studentId)?.toString();
-    if (sessionStudentId !== studentId.toString()) {
+    if (studentId && sessionStudentId !== studentId.toString()) {
       throw new AppError('Forbidden', 403);
     }
-    if (session.status !== 'FAILED') {
-      throw new AppError('Only failed sessions can be retried', 400);
+
+    // Idempotent: If already completed, do not double finalize or re-grade
+    if (session.status === 'completed') {
+      return {
+        session,
+        requeued: false,
+        message: 'Session is already completed'
+      };
     }
 
-    const answers = (session.questionsServed || [])
-      .filter((q: any) => q.selectedAnswer !== undefined || q.writtenAnswer !== undefined)
-      .map((q: any) => ({
-        questionId: (q.questionId?._id || q.questionId).toString(),
-        selectedAnswer: q.selectedAnswer,
-        writtenAnswer: q.writtenAnswer,
-        timeTaken: q.timeTaken || 0,
-      }));
+    // Only re-grades PENDING or FAILED items
+    const uncompleted = (session.questionsServed || []).filter(
+      (q: any) => q.gradingStatus === 'PENDING' || q.gradingStatus === 'FAILED'
+    );
+
+    if (uncompleted.length === 0) {
+      // If all items are graded but status is still PENDING_GRADING, finalize atomically once
+      if (session.status === 'PENDING_GRADING') {
+        const correctAnswersCount = session.questionsServed.filter((q: any) => q.correct === true).length;
+        const totalQuestions = session.totalQuestions || session.questionsServed.length;
+        const finalScore = totalQuestions > 0 ? (correctAnswersCount / totalQuestions) * 100 : 0;
+        const finalized = await PracticeSession.findOneAndUpdate(
+          { _id: sessionId, status: 'PENDING_GRADING' },
+          {
+            $set: {
+              status: 'completed',
+              score: finalScore,
+              correctAnswers: correctAnswersCount,
+              endedAt: session.endedAt || new Date()
+            }
+          },
+          { returnDocument: 'after' }
+        );
+        return {
+          session: finalized || session,
+          requeued: false,
+          message: 'All items were already graded; session finalized'
+        };
+      }
+      return { session, requeued: false, message: 'No items require grading' };
+    }
+
+    const answers = uncompleted.map((q: any) => ({
+      questionId: (q.questionId?._id || q.questionId).toString(),
+      selectedAnswer: q.selectedAnswer,
+      writtenAnswer: q.writtenAnswer,
+      timeTaken: q.timeTaken || 0,
+    }));
 
     session.status = 'PENDING_GRADING';
     await session.save();
@@ -428,7 +470,17 @@ export class PracticeService {
       answers,
     });
 
-    return session;
+    const refreshedSession = await practiceRepository.findById(sessionId);
+    return {
+      session: refreshedSession || session,
+      requeued: true,
+      uncompletedCount: uncompleted.length
+    };
+  }
+
+  async retryGrading(studentId: string, sessionId: string) {
+    const res = await this.requeueFailedGrading(sessionId, studentId);
+    return res.session;
   }
 
   calculateTrustScore(events: any[]): number {

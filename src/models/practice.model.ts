@@ -10,7 +10,7 @@ const PracticeAnswerSchema = new Schema(
     selectedAnswer: { type: String }, // Optional for theory
     writtenAnswer: { type: String }, // For theory
     correct: { type: Boolean }, // Optional, might be pending
-    gradingStatus: { type: String, enum: ['PENDING', 'GRADED'], default: 'GRADED' },
+    gradingStatus: { type: String, enum: ['PENDING', 'GRADED', 'FAILED'], default: 'GRADED' },
     score: { type: Number },
     feedback: { type: String },
     timeTaken: { type: Number }, // in seconds
@@ -52,6 +52,8 @@ const PracticeSessionSchema = new Schema<IPracticeSessionDocument>(
     questionTypeMix: { type: String, enum: ['MIXED', 'OBJECTIVE_ONLY', 'THEORY_ONLY'], default: 'MIXED' },
     mode: { type: String, enum: ['quick', 'mock', 'diagnostic'], default: 'quick', required: true },
     clampedMessage: { type: String }, // Populated when totalQuestions was clamped by the level cap
+    isArchived: { type: Boolean, default: false },
+    archivedAt: { type: Date },
   },
   {
     timestamps: true,

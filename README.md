@@ -49,6 +49,10 @@ npm run build
 npm start
 ```
 
+> [!IMPORTANT]
+> **Redis Requirement & Mock Redis Limitations:**
+> In development/testing environments, setting `REDIS_HOST=mock` activates an in-memory Redis mock (`ioredis-mock`). Note that **mock Redis loses all queued, active, and deduplication jobs on server restart or process exit**. Production environments require a real, dedicated Redis deployment with persistence (AOF/RDB) enabled to guarantee job durability and prevent dropped grading sessions.
+
 ## Note
 
 This repository is part of a final year undergraduate engineering project.

@@ -9,9 +9,9 @@ export interface IPracticeAnswer {
   difficulty: number;
   selectedAnswer?: string;
   writtenAnswer?: string; // For THEORY
-  correct?: boolean; // Optional, pending theory questions might not have it yet
-  gradingStatus: 'PENDING' | 'GRADED';
-  score?: number; // 0-1 score for theory questions
+  correct?: boolean | null; // Optional, pending theory questions might not have it yet
+  gradingStatus: 'PENDING' | 'GRADED' | 'FAILED';
+  score?: number | null; // 0-1 score for theory questions
   feedback?: string; // AI grader feedback
   timeTaken?: number;
   answeredAt: Date;
@@ -40,7 +40,7 @@ export interface IPracticeSession {
   totalQuestions: number;
   questionsAnswered: number;
   correctAnswers: number;
-  score: number;
+  score: number | null;
   trustScore: number;
   antiCheatEvents: IAntiCheatEvent[];
   timeBudget?: number; // in seconds
@@ -48,6 +48,10 @@ export interface IPracticeSession {
   questionTypeMix?: QuestionTypeMix;
   mode?: 'quick' | 'mock' | 'diagnostic';
   clampedMessage?: string; // Set when totalQuestions was clamped by the level cap
+  isArchived?: boolean;
+  archivedAt?: Date;
+  isGradingPending?: boolean;
+  gradingState?: string;
 }
 
 export interface IPracticeSessionDocument extends IPracticeSession, Document {}

@@ -5,7 +5,8 @@ import { practiceRepository } from '../repositories/practice.repository';
 import { questionRepository } from '../repositories/question.repository';
 import { adaptiveService } from '../services/adaptive.service';
 import { practiceService } from '../services/practice.service';
-import { aiQueue } from './ai.job';
+import { groqProvider } from '../providers/groq.provider';
+import { PracticeSession } from '../models/practice.model';
 
 const isMock = env.REDIS_HOST === 'mock' || env.REDIS_HOST === 'none';
 
@@ -29,168 +30,292 @@ export const examQueue: any = isMock
     }
   : new Queue('Exam-Tasks', { connection });
 
+export const withTimeout = <T>(promise: Promise<T>, ms: number = 30000): Promise<T> => {
+  let timeoutId: NodeJS.Timeout;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Operation timed out after ${ms}ms`));
+    }, ms);
+  });
+  return Promise.race([
+    promise.then((res) => {
+      clearTimeout(timeoutId);
+      return res;
+    }),
+    timeoutPromise,
+  ]);
+};
+
+export async function gradeTheoryWithRetry(
+  gradeFn: () => Promise<{ score: number; feedback: string }>,
+  maxAttempts: number = 3,
+  baseDelayMs: number = 500,
+  timeoutMs: number = 30000
+): Promise<{ score: number; feedback: string }> {
+  let lastError: any;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await withTimeout(gradeFn(), timeoutMs);
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < maxAttempts) {
+        const delay = baseDelayMs * Math.pow(2, attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
+export async function runWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let currentIndex = 0;
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (currentIndex < items.length) {
+      const index = currentIndex++;
+      try {
+        const val = await fn(items[index], index);
+        results[index] = { status: 'fulfilled', value: val };
+      } catch (err) {
+        results[index] = { status: 'rejected', reason: err };
+      }
+    }
+  });
+
+  await Promise.allSettled(workers);
+  return results;
+}
+
 export const processExamJob = async (job: Job | any) => {
   const { sessionId, studentId, answers } = job.data;
-    
-    // 1. Anti-Ghost Job Protection (Redis Deduplication)
-    const jobDedupKey = `exam:job:finalize:${sessionId}`;
-    // Using simple setnx through ioredis
-    const isDuplicateJob = await connection.setnx(jobDedupKey, "1");
-    if (!isDuplicateJob) {
-      console.log(`[ExamWorker] Ghost job intercepted for session ${sessionId}. Ignored.`);
-      return { status: "IGNORED_GHOST_JOB" };
+
+  // 1. Anti-Ghost Job Protection (Redis Deduplication)
+  const jobDedupKey = `exam:job:finalize:${sessionId}`;
+  const isDuplicateJob = await connection.setnx(jobDedupKey, '1');
+  if (!isDuplicateJob) {
+    console.log(`[ExamWorker] Ghost job intercepted for session ${sessionId}. Ignored.`);
+    return { status: 'IGNORED_GHOST_JOB' };
+  }
+  // Keep key alive for duration of exam window to block duplicates
+  await connection.expire(jobDedupKey, 14400);
+
+  let sessionFinalized = false;
+
+  try {
+    const session = await practiceRepository.findById(sessionId);
+    if (!session) {
+      await connection.del(jobDedupKey);
+      throw new Error(`Session ${sessionId} not found`);
     }
-    // Keep key alive for duration of exam window to block duplicates
-    await connection.expire(jobDedupKey, 14400);
 
-    try {
-      const session = await practiceRepository.findById(sessionId);
-      if (!session) {
-        throw new Error(`Session ${sessionId} not found`);
-      }
-      if (session.status === 'completed' || session.status === 'FAILED') {
-         return { status: "ALREADY_FINALIZED" };
-      }
+    if (session.status === 'completed') {
+      sessionFinalized = true;
+      return { status: 'ALREADY_FINALIZED' };
+    }
 
-      const questionIds = answers.map((a: any) => a.questionId);
-      const questions = await questionRepository.findManyByIds(questionIds);
-      const questionMap = new Map(questions.map(q => [q._id.toString(), q]));
+    const questionIds = (answers || []).map((a: any) => a.questionId);
+    const questions = await questionRepository.findManyByIds(questionIds);
+    const questionMap = new Map(questions.map((q) => [q._id.toString(), q]));
 
-      const batchAdaptiveAnswers: { topicId: string, questionId: string, isCorrect: boolean }[] = [];
-      const aiJobs: any[] = [];
-      
-      let totalExpectedMinMs = 0;
-      let questionsAnsweredCount = session.questionsAnswered || 0;
-      let correctAnswersCount = session.correctAnswers || 0;
+    const batchAdaptiveAnswers: { topicId: string; questionId: string; isCorrect: boolean }[] = [];
+    let totalExpectedMinMs = 0;
 
-      for (const ans of answers) {
-        const existingAns = session.questionsServed.find((q: any) => q.questionId._id?.toString() === ans.questionId || q.questionId.toString() === ans.questionId);
-        if (!existingAns) continue;
+    for (const ans of (answers || [])) {
+      const existingAns = session.questionsServed.find(
+        (q: any) =>
+          q.questionId?._id?.toString() === ans.questionId ||
+          q.questionId?.toString() === ans.questionId
+      );
+      if (!existingAns) continue;
 
-        const question = questionMap.get(ans.questionId);
-        if (!question) continue;
+      const question = questionMap.get(ans.questionId);
+      if (!question) continue;
 
-        const submissionId = existingAns.submissionId;
-        const isTheory = question.type === 'THEORY';
-        const isCorrect = isTheory ? undefined : question.correctAnswer === ans.selectedAnswer;
+      const isTheory = question.type === 'THEORY';
+      totalExpectedMinMs += isTheory ? 3000 + (question.questionText?.length || 0) * 15 : 3000;
 
-        totalExpectedMinMs += isTheory ? 3000 + (question.questionText.length * 15) : 3000;
+      const questionTopicId = question.topicId?._id || question.topicId;
+      const topicIdStr = questionTopicId ? questionTopicId.toString() : '';
 
-        const questionTopicId = question.topicId?._id || question.topicId;
-        const topicIdStr = questionTopicId ? questionTopicId.toString() : '';
+      existingAns.timeTaken = ans.timeTaken;
+      existingAns.answeredAt = new Date();
 
-        const answerData: any = {
-          submissionId,
-          questionId: question._id,
-          topicId: questionTopicId,
-          difficulty: question.eloRating || 1,
-          timeTaken: ans.timeTaken,
-          answeredAt: new Date(),
-        };
-
-        if (isTheory) {
-          answerData.writtenAnswer = ans.writtenAnswer;
-          answerData.gradingStatus = 'PENDING';
-        } else {
-          answerData.selectedAnswer = ans.selectedAnswer;
-          answerData.correct = isCorrect;
-          answerData.gradingStatus = 'GRADED';
+      if (isTheory) {
+        existingAns.writtenAnswer = ans.writtenAnswer;
+        if (existingAns.gradingStatus !== 'GRADED') {
+          existingAns.gradingStatus = 'PENDING';
         }
+      } else {
+        const isCorrect = question.correctAnswer === ans.selectedAnswer;
+        existingAns.selectedAnswer = ans.selectedAnswer;
+        existingAns.correct = isCorrect;
+        existingAns.gradingStatus = 'GRADED';
 
-        // Update the placeholder
-        Object.assign(existingAns, answerData);
-
-        questionsAnsweredCount++;
-        if (!isTheory && isCorrect) {
-          correctAnswersCount++;
-        }
-
-        // Prepare mastery update or AI job
-        if (!isTheory) {
-          batchAdaptiveAnswers.push({
-            topicId: topicIdStr,
-            questionId: question._id.toString(),
-            isCorrect: isCorrect!
-          });
-        } else {
-          const sessionCourseIdStr = (session.courseId?._id || session.courseId)?.toString() || '';
-          aiJobs.push({
-            name: 'gradeTheoryAnswer',
-            data: {
-              practiceSessionId: sessionId,
-              submissionId: submissionId,
-              questionId: question._id.toString(),
-              questionText: question.questionText || '',
-              studentId,
-              courseId: sessionCourseIdStr,
-              topicId: topicIdStr,
-              writtenAnswer: ans.writtenAnswer,
-              modelAnswer: question.modelAnswer,
-              rubric: question.rubric
-            }
-          });
-        }
-      }
-
-      const batchDurationMs = Date.now() - session.startedAt.getTime();
-      // Check session duration anomaly for anti-cheat
-      if (batchDurationMs < totalExpectedMinMs && questionsAnsweredCount > 0) {
-        session.antiCheatEvents.push({
-          type: 'FAST_ANSWER',
-          timestamp: new Date(),
-          metadata: { expectedMinMs: totalExpectedMinMs, actualMs: batchDurationMs, isBatch: true }
+        batchAdaptiveAnswers.push({
+          topicId: topicIdStr,
+          questionId: question._id.toString(),
+          isCorrect,
         });
-        session.trustScore = practiceService.calculateTrustScore(session.antiCheatEvents);
       }
-
-      // Process all objective Elo updates in bulk
-      const courseIdStr = (session.courseId?._id || session.courseId)?.toString() || '';
-      await adaptiveService.processBatchAnswers(studentId, courseIdStr, batchAdaptiveAnswers);
-
-      // Enqueue all AI jobs for theory questions
-      if (aiJobs.length > 0) {
-        await aiQueue.addBulk(aiJobs);
-      }
-
-      session.questionsAnswered = questionsAnsweredCount;
-      session.correctAnswers = correctAnswersCount;
-
-      // Ensure any unanswered questions are marked GRADED and not correct
-      for (const q of session.questionsServed) {
-        if (!q.selectedAnswer && !q.writtenAnswer && q.gradingStatus === 'PENDING') {
-          q.gradingStatus = 'GRADED';
-          q.correct = false;
-        }
-      }
-
-      // Complete the session
-      const finalScore = session.totalQuestions > 0 ? (correctAnswersCount / session.totalQuestions) * 100 : 0;
-      session.status = 'completed';
-      session.endedAt = new Date(); // Could use the earlier endedAt, but this is fine
-      session.score = finalScore;
-
-      await session.save();
-      
-      return { status: "SUCCESS" };
-      
-    } catch (error) {
-      console.error(`[ExamWorker] Failed to process session ${sessionId}:`, error);
-      // Update session status to FAILED
-      const { PracticeSession } = require('../models/practice.model');
-      await PracticeSession.findByIdAndUpdate(sessionId, { status: 'FAILED' });
-      throw error;
     }
+
+    // Process all objective Elo updates in bulk
+    const courseIdStr = (session.courseId?._id || session.courseId)?.toString() || '';
+    if (batchAdaptiveAnswers.length > 0) {
+      await adaptiveService.processBatchAnswers(studentId, courseIdStr, batchAdaptiveAnswers);
+    }
+
+    // Check session duration anomaly for anti-cheat
+    const batchDurationMs = Date.now() - session.startedAt.getTime();
+    if (batchDurationMs < totalExpectedMinMs && (session.questionsAnswered || 0) > 0) {
+      session.antiCheatEvents.push({
+        type: 'FAST_ANSWER',
+        timestamp: new Date(),
+        metadata: { expectedMinMs: totalExpectedMinMs, actualMs: batchDurationMs, isBatch: true },
+      });
+      session.trustScore = practiceService.calculateTrustScore(session.antiCheatEvents);
+    }
+
+    // Ensure any unanswered questions are marked GRADED and not correct
+    for (const q of session.questionsServed) {
+      if (!q.selectedAnswer && !q.writtenAnswer && q.gradingStatus === 'PENDING') {
+        q.gradingStatus = 'GRADED';
+        q.correct = false;
+        q.score = 0;
+      }
+    }
+
+    // Query any missing question documents in session.questionsServed to verify theory type
+    const missingQuestionIds = session.questionsServed
+      .map((q: any) => (q.questionId?._id || q.questionId)?.toString())
+      .filter((id: string) => id && !questionMap.has(id));
+
+    if (missingQuestionIds.length > 0) {
+      const extraQuestions = await questionRepository.findManyByIds(missingQuestionIds);
+      for (const eq of extraQuestions) {
+        questionMap.set(eq._id.toString(), eq);
+      }
+    }
+
+    // Identify theory answers requiring grading: PENDING or FAILED with writtenAnswer
+    const theoryItemsToGrade = session.questionsServed.filter((q: any) => {
+      const qDoc = questionMap.get((q.questionId?._id || q.questionId)?.toString());
+      const isTheory = qDoc?.type === 'THEORY';
+      return (
+        isTheory &&
+        (q.gradingStatus === 'PENDING' || q.gradingStatus === 'FAILED') &&
+        typeof q.writtenAnswer === 'string' &&
+        q.writtenAnswer.trim().length > 0
+      );
+    });
+
+    if (theoryItemsToGrade.length > 0) {
+      await runWithConcurrency(theoryItemsToGrade, 3, async (item: any) => {
+        const qDoc = questionMap.get((item.questionId?._id || item.questionId)?.toString());
+        const safeQuestionText =
+          typeof qDoc?.questionText === 'string' && qDoc.questionText.trim().length > 0
+            ? qDoc.questionText.trim()
+            : 'Theory Question';
+        const modelAnswer = qDoc?.modelAnswer || '';
+        const rubric = qDoc?.rubric || [];
+        const writtenAnswer = item.writtenAnswer || '';
+
+        try {
+          const result = await gradeTheoryWithRetry(
+            () => groqProvider.gradeTheoryAnswer(safeQuestionText, modelAnswer, rubric, writtenAnswer),
+            3,
+            500,
+            30000
+          );
+          item.score = result.score;
+          item.feedback = result.feedback;
+          item.correct = result.score >= 0.7;
+          item.gradingStatus = 'GRADED';
+
+          try {
+            const topicIdStr = (item.topicId?._id || item.topicId)?.toString() || '';
+            await adaptiveService.processAnswer(
+              studentId,
+              courseIdStr,
+              topicIdStr,
+              (item.questionId?._id || item.questionId).toString(),
+              item.correct
+            );
+          } catch (adaptErr) {
+            console.warn(`[ExamWorker] Adaptive update failed for question ${item.questionId}:`, adaptErr);
+          }
+        } catch (gradeError) {
+          console.error(`[ExamWorker] Theory grading failed for question ${item.questionId}:`, gradeError);
+          // Timed-out or failed answers get gradingStatus 'FAILED' (answer text preserved, score not set to 0)
+          item.gradingStatus = 'FAILED';
+          item.score = undefined;
+          item.correct = undefined;
+        }
+      });
+    }
+
+    // Save session item states
+    await session.save();
+
+    // Check if ALL items in questionsServed are GRADED
+    const allGraded = session.questionsServed.every((q: any) => q.gradingStatus === 'GRADED');
+
+    if (!allGraded) {
+      // Session stays PENDING_GRADING; release dedup key so requeue can run
+      await connection.del(jobDedupKey);
+      return {
+        status: 'PENDING_GRADING',
+        message: 'Grading incomplete; some items failed or remain pending',
+      };
+    }
+
+    // All items resolved! Finalize once via guarded findOneAndUpdate on status
+    const correctAnswersCount = session.questionsServed.filter((q: any) => q.correct === true).length;
+    const totalQuestions = session.totalQuestions || session.questionsServed.length;
+    const finalScore = totalQuestions > 0 ? (correctAnswersCount / totalQuestions) * 100 : 0;
+
+    const finalizedSession = await PracticeSession.findOneAndUpdate(
+      { _id: sessionId, status: 'PENDING_GRADING' },
+      {
+        $set: {
+          status: 'completed',
+          score: finalScore,
+          correctAnswers: correctAnswersCount,
+          questionsServed: session.questionsServed,
+          endedAt: session.endedAt || new Date(),
+        },
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (finalizedSession) {
+      sessionFinalized = true;
+      return { status: 'SUCCESS', session: finalizedSession };
+    } else {
+      sessionFinalized = true;
+      return { status: 'ALREADY_FINALIZED' };
+    }
+  } catch (error) {
+    console.error(`[ExamWorker] Failed to process session ${sessionId}:`, error);
+    await connection.del(jobDedupKey);
+    throw error;
+  } finally {
+    if (!sessionFinalized) {
+      await connection.del(jobDedupKey);
+    }
+  }
 };
 
 export const examWorker: any = !isMock
-  ? new Worker(
-      'Exam-Tasks',
-      processExamJob,
-      { 
-        connection,
-        concurrency: 5,
-      }
-    )
+  ? new Worker('Exam-Tasks', processExamJob, {
+      connection,
+      concurrency: 5,
+    })
   : null;
 
 if (examWorker) {
