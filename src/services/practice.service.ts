@@ -57,8 +57,10 @@ export class PracticeService {
     if (tokenUser.type === 'student' || student.roleIds) {
       if (student.departmentId) {
         const course = await courseService.getCourseById(data.courseId);
-        if (course && course.departmentId.toString() !== student.departmentId.toString()) {
-          console.warn('Course does not belong to your department, allowing for testing');
+        const studentDeptId = student.departmentId?._id ? student.departmentId._id.toString() : student.departmentId?.toString();
+        const courseDeptId = course?.departmentId?._id ? course.departmentId._id.toString() : course?.departmentId?.toString();
+        if (course && courseDeptId && courseDeptId !== studentDeptId) {
+          throw new AppError('Forbidden: Cannot start session for a course outside your department', 403);
         }
       }
     }
@@ -299,13 +301,15 @@ export class PracticeService {
       if (sessionStudentId !== tokenUserId) {
         throw new AppError('Forbidden: Cannot access session belonging to another student', 403);
       }
-      // Relaxed permission for testing
+      // Department constraint check
       const student = await studentRepository.findById(tokenUserId);
       if (student && student.departmentId) {
         const sessionCourseId = (sessionDoc.courseId?._id || sessionDoc.courseId)?.toString();
         const course = await courseService.getCourseById(sessionCourseId);
-        if (course && course.departmentId.toString() !== student.departmentId.toString()) {
-          console.warn('Session course does not belong to your department, allowing for testing');
+        const studentDeptId = student.departmentId?._id ? student.departmentId._id.toString() : student.departmentId?.toString();
+        const courseDeptId = course?.departmentId?._id ? course.departmentId._id.toString() : course?.departmentId?.toString();
+        if (course && courseDeptId && courseDeptId !== studentDeptId) {
+          throw new AppError('Forbidden: Cannot access session for a course outside your department', 403);
         }
       }
     }
