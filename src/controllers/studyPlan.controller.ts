@@ -18,6 +18,13 @@ export class StudyPlanController {
     return sendResponse(res, 200, 'Active study plan retrieved', { plan });
   };
 
+  getPlanHistory = async (req: Request, res: Response) => {
+    // @ts-ignore
+    const studentId = req.user.id || req.user._id;
+    const plans = await studyPlanService.getPlanHistory(studentId);
+    return sendResponse(res, 200, 'Study plan history retrieved', { plans });
+  };
+
   getPlanById = async (req: Request, res: Response) => {
     // @ts-ignore
     const studentId = req.user.id || req.user._id;

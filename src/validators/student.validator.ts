@@ -52,6 +52,9 @@ export const updateCourseExamDatesSchema = z.object({
     z.object({
       courseExamDates: z.record(z.string(), z.string()),
     }),
+    z.object({
+      dates: z.record(z.string(), z.string()),
+    }),
     z.record(z.string(), z.string()),
   ]),
 });

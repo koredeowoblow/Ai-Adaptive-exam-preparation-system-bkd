@@ -282,6 +282,17 @@ export class StudyPlanService {
   }
 
   /**
+   * Retrieves all study plans for a student ordered by most recent first.
+   */
+  async getPlanHistory(studentId: string): Promise<any[]> {
+    if (!mongoose.isValidObjectId(studentId)) {
+      throw new AppError('Invalid student ID format', 400);
+    }
+    const plans = await StudyPlan.find({ studentId: new Types.ObjectId(studentId) }).sort({ createdAt: -1 });
+    return plans.map((p) => this.formatPlanResponse(p));
+  }
+
+  /**
    * Retrieves a specific plan by ID, verifying student ownership.
    */
   async getPlanById(studentId: string, planId: string): Promise<any> {

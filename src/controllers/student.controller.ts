@@ -21,7 +21,7 @@ export class StudentController {
   updateCourseExamDates = async (req: Request, res: Response) => {
     // @ts-ignore
     const studentId = req.user.id || req.user._id;
-    const input = req.body?.courseExamDates || req.body || {};
+    const input = req.body?.courseExamDates || req.body?.dates || req.body || {};
     const profile = await studentService.updateCourseExamDates(studentId, input);
     return sendResponse(res, 200, 'Course exam dates updated successfully', profile);
   };

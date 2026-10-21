@@ -9,6 +9,7 @@ router.use(protect);
 
 router.post('/generate', asyncHandler(studyPlanController.generatePlan));
 router.get('/active', asyncHandler(studyPlanController.getActivePlan));
+router.get('/history', asyncHandler(studyPlanController.getPlanHistory));
 router.get('/:planId', asyncHandler(studyPlanController.getPlanById));
 router.put('/:planId/tasks/:taskId', asyncHandler(studyPlanController.updateTask));
 router.post('/:planId/weeks/:n/generate', asyncHandler(studyPlanController.generateWeek));
