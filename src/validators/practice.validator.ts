@@ -4,7 +4,9 @@ export const startSessionSchema = z.object({
   body: z.object({
     courseId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid course ID format'),
     totalQuestions: z.number().int().min(1).max(100).optional(),
+    questionCount: z.number().int().min(1).max(100).optional(),
     questionType: z.enum(['MIXED', 'OBJECTIVE_ONLY', 'THEORY_ONLY']).optional(),
+    mode: z.enum(['quick', 'mock', 'diagnostic']).optional(),
   }),
 });
 

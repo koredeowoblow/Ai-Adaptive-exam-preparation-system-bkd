@@ -9,7 +9,12 @@ export class PracticeController {
     const tokenUser = req.user;
     const studentId = tokenUser.id || tokenUser._id;
     
-    const result = await practiceService.startSession(studentId, req.body, tokenUser);
+    const totalQuestions = req.body.totalQuestions ?? req.body.questionCount;
+    const payload = {
+      ...req.body,
+      ...(totalQuestions !== undefined ? { totalQuestions } : {}),
+    };
+    const result = await practiceService.startSession(studentId, payload, tokenUser);
     return sendResponse(res, 200, 'Session started', result);
   };
 
