@@ -2,13 +2,26 @@ import { Document, Types } from 'mongoose';
 
 export type QuestionTypeMix = 'MIXED' | 'OBJECTIVE_ONLY' | 'THEORY_ONLY';
 
+export interface ISubPartAnswer {
+  partId: string;
+  label?: string;
+  writtenAnswer: string;
+  score?: number; // 0-1
+  marksAwarded?: number;
+  maxMarks?: number;
+  feedback?: string;
+  rubricCriteriaMet?: string[];
+  correct?: boolean;
+}
+
 export interface IPracticeAnswer {
   submissionId: string;
   questionId: Types.ObjectId;
   topicId: Types.ObjectId;
   difficulty: number;
   selectedAnswer?: string;
-  writtenAnswer?: string; // For THEORY
+  writtenAnswer?: string; // For THEORY (combined or fallback)
+  subPartAnswers?: ISubPartAnswer[]; // Structured multi-part answers
   correct?: boolean | null; // Optional, pending theory questions might not have it yet
   gradingStatus: 'PENDING' | 'GRADED' | 'FAILED';
   score?: number | null; // 0-1 score for theory questions
@@ -68,6 +81,11 @@ export interface SubmitAnswerDTO {
   questionId: string;
   selectedAnswer?: string;
   writtenAnswer?: string;
+  subPartAnswers?: {
+    partId: string;
+    label?: string;
+    writtenAnswer: string;
+  }[];
   timeTaken?: number;
 }
 
@@ -76,6 +94,11 @@ export interface SubmitBatchAnswersDTO {
     questionId: string;
     selectedAnswer?: string;
     writtenAnswer?: string;
+    subPartAnswers?: {
+      partId: string;
+      label?: string;
+      writtenAnswer: string;
+    }[];
     timeTaken?: number;
   }[];
 }

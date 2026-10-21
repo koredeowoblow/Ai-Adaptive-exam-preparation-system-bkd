@@ -187,6 +187,139 @@ explanation outside the JSON:
       throw error;
     }
   }
+
+  async gradeMultiPartTheoryAnswer(input: {
+    questionStem: string;
+    diagramCaption?: string;
+    subParts: {
+      partId: string;
+      label: string;
+      prompt: string;
+      maxMarks?: number;
+      modelAnswer: string;
+      rubric: { point: string; weight: number }[];
+      studentAnswer: string;
+    }[];
+  }): Promise<{
+    overallScore: number;
+    overallFeedback: string;
+    subPartResults: {
+      partId: string;
+      label: string;
+      score: number;
+      marksAwarded: number;
+      maxMarks: number;
+      feedback: string;
+      rubricCriteriaMet?: string[];
+    }[];
+  }> {
+    const totalMaxMarks = input.subParts.reduce((sum, sp) => sum + (sp.maxMarks || 1), 0);
+    const subPartsPayload = input.subParts.map((sp) => ({
+      partId: sp.partId,
+      label: sp.label,
+      prompt: sp.prompt,
+      maxMarks: sp.maxMarks || 1,
+      modelAnswer: sp.modelAnswer,
+      rubric: sp.rubric || [],
+      studentAnswer: sp.studentAnswer || '(No answer provided)',
+    }));
+
+    const prompt = `
+You are grading a student's responses to a university-level multi-part theory examination question.
+Score each sub-part strictly and constructively based on its specific prompt, model answer, and rubric.
+Mathematical, scientific, and technical notations (including LaTeX and Unicode) should be evaluated for substance.
+
+QUESTION CONTEXT / STEM:
+${input.questionStem || 'University Theory Problem'}
+${input.diagramCaption ? `[Diagram: ${input.diagramCaption}]` : ''}
+
+SUB-PARTS TO GRADE:
+${JSON.stringify(subPartsPayload, null, 2)}
+
+Instructions:
+1. For EACH sub-part in the array, evaluate the student's answer against the rubric and model answer.
+2. Assign a fractional score between 0.0 and 1.0 (where 1.0 is full marks).
+3. Compute marksAwarded = score * maxMarks for that sub-part.
+4. Provide constructive feedback (1-2 sentences) directly addressed to the student for that sub-part.
+5. Compute overallScore as the total marks awarded divided by total max marks (${totalMaxMarks}).
+6. Provide a concise overall feedback summary (2-3 sentences).
+
+Respond with ONLY valid JSON (no markdown formatting, no code fences, no extra text):
+{
+  "overallScore": <float between 0.0 and 1.0>,
+  "overallFeedback": "<Concise summary feedback>",
+  "subPartResults": [
+    {
+      "partId": "<matching partId>",
+      "label": "<matching label>",
+      "score": <float between 0.0 and 1.0>,
+      "marksAwarded": <float>,
+      "maxMarks": <number>,
+      "feedback": "<constructive feedback for this sub-part>",
+      "rubricCriteriaMet": ["<criterion text>"]
+    }
+  ]
+}
+    `;
+
+    try {
+      const chatCompletion = await this.groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'qwen/qwen3.8-27b',
+        temperature: 0.1,
+      });
+
+      const responseText = chatCompletion.choices[0]?.message?.content || '{}';
+      let parsed: any = {};
+      try {
+        parsed = JSON.parse(responseText.trim());
+      } catch {
+        const cleaned = responseText.replace(/```(?:json)?/gi, '').replace(/```/g, '').trim();
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch {
+          parsed = {};
+        }
+      }
+
+      const rawSubResults = Array.isArray(parsed.subPartResults) ? parsed.subPartResults : [];
+      let totalAwarded = 0;
+
+      const subPartResults = input.subParts.map((sp) => {
+        const found = rawSubResults.find((r: any) => r.partId === sp.partId);
+        const maxMarks = sp.maxMarks || 1;
+        let score = typeof found?.score === 'number' ? Math.max(0, Math.min(1, found.score)) : 0;
+        let marksAwarded = typeof found?.marksAwarded === 'number' ? found.marksAwarded : score * maxMarks;
+        marksAwarded = Math.max(0, Math.min(maxMarks, marksAwarded));
+        totalAwarded += marksAwarded;
+
+        return {
+          partId: sp.partId,
+          label: sp.label,
+          score,
+          marksAwarded,
+          maxMarks,
+          feedback: typeof found?.feedback === 'string' && found.feedback.trim() ? found.feedback.trim() : 'Evaluated according to rubric.',
+          rubricCriteriaMet: Array.isArray(found?.rubricCriteriaMet) ? found.rubricCriteriaMet : [],
+        };
+      });
+
+      const overallScore = totalMaxMarks > 0 ? Math.max(0, Math.min(1, totalAwarded / totalMaxMarks)) : 0;
+      const overallFeedback = typeof parsed.overallFeedback === 'string' && parsed.overallFeedback.trim()
+        ? parsed.overallFeedback.trim()
+        : `Overall performance: ${(overallScore * 100).toFixed(1)}%.`;
+
+      return {
+        overallScore,
+        overallFeedback,
+        subPartResults,
+      };
+    } catch (error) {
+      console.error('Error generating Groq multi-part theory grade:', error);
+      throw error;
+    }
+  }
+
   async generateChatResponse(messages: { role: 'user' | 'assistant'; content: string }[], context?: string): Promise<string> {
     try {
       const systemPrompt = context

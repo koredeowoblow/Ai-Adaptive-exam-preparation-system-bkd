@@ -10,6 +10,12 @@ export const startSessionSchema = z.object({
   }),
 });
 
+const subPartAnswerSubmissionSchema = z.object({
+  partId: z.string().min(1),
+  label: z.string().optional(),
+  writtenAnswer: z.string(),
+});
+
 export const submitBatchAnswersSchema = z.object({
   body: z.object({
     answers: z.array(
@@ -17,6 +23,7 @@ export const submitBatchAnswersSchema = z.object({
         questionId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid question ID format'),
         selectedAnswer: z.string().optional(),
         writtenAnswer: z.string().optional(),
+        subPartAnswers: z.array(subPartAnswerSubmissionSchema).optional(),
         timeTaken: z.number().int().min(0).optional(),
       })
     ),

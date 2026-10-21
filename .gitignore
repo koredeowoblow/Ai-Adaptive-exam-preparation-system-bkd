@@ -29,6 +29,7 @@ load-tests/audit-report-*.md
 
 # Temporary, scratch & tool folders
 scratch/
+uploads/
 .agent/
 .DS_Store
 Thumbs.db

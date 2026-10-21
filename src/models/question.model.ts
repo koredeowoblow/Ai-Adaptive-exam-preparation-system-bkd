@@ -6,7 +6,34 @@ const QuestionOptionSchema = new Schema(
     id: { type: String, required: true },
     text: { type: String, required: true, trim: true },
   },
-  { _id: false } // No need for separate ObjectIds for embedded options
+  { _id: false }
+);
+
+const QuestionSubPartSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    label: { type: String, required: true, trim: true },
+    prompt: { type: String, required: true, trim: true },
+    maxMarks: { type: Number, default: 1 },
+    modelAnswer: { type: String, required: true, trim: true },
+    rubric: {
+      type: [
+        {
+          point: { type: String, required: true },
+          weight: { type: Number, required: true },
+        },
+      ],
+      required: true,
+      validate: [
+        (val: any[]) => Array.isArray(val) && val.length > 0,
+        'Each sub-part must have at least 1 rubric point',
+      ],
+    },
+    diagramUrl: { type: String },
+    diagramCaption: { type: String },
+    order: { type: Number, default: 0 },
+  },
+  { _id: false }
 );
 
 const QuestionSchema = new Schema<IQuestionDocument>(
@@ -27,6 +54,26 @@ const QuestionSchema = new Schema<IQuestionDocument>(
       required: [true, 'Question text is required'],
       trim: true,
     },
+    diagramUrl: {
+      type: String,
+    },
+    diagramCaption: {
+      type: String,
+    },
+    hasSubParts: {
+      type: Boolean,
+      default: false,
+    },
+    subParts: {
+      type: [QuestionSubPartSchema],
+      validate: [
+        function(this: IQuestionDocument, val: any[]) {
+          if (this.type !== 'THEORY' || !this.hasSubParts) return true;
+          return Array.isArray(val) && val.length > 0;
+        },
+        'A multi-part theory question must have at least one sub-part',
+      ],
+    },
     options: {
       type: [QuestionOptionSchema],
       required: function(this: IQuestionDocument) { return this.type === 'MULTIPLE_CHOICE'; },
@@ -44,17 +91,22 @@ const QuestionSchema = new Schema<IQuestionDocument>(
     },
     modelAnswer: {
       type: String,
-      required: function(this: IQuestionDocument) { return this.type === 'THEORY'; },
+      required: function(this: IQuestionDocument) {
+        return this.type === 'THEORY' && !this.hasSubParts && (!this.subParts || this.subParts.length === 0);
+      },
     },
     rubric: {
       type: [{
         point: { type: String, required: true },
-        weight: { type: Number, required: true, min: 0, max: 1 },
+        weight: { type: Number, required: true },
       }],
-      required: function(this: IQuestionDocument) { return this.type === 'THEORY'; },
+      required: function(this: IQuestionDocument) {
+        return this.type === 'THEORY' && !this.hasSubParts && (!this.subParts || this.subParts.length === 0);
+      },
       validate: [
         function(this: IQuestionDocument, val: any[]) {
           if (this.type !== 'THEORY') return true;
+          if (this.hasSubParts || (this.subParts && this.subParts.length > 0)) return true;
           return val && val.length > 0;
         },
         'A theory question must have at least 1 rubric point'
@@ -80,7 +132,7 @@ const QuestionSchema = new Schema<IQuestionDocument>(
     },
     explanation: {
       type: String,
-      required: true,
+      default: 'See model answer and rubric criteria.',
     },
     explanationSource: {
       type: String,

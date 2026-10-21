@@ -46,12 +46,12 @@ export const withTimeout = <T>(promise: Promise<T>, ms: number = 30000): Promise
   ]);
 };
 
-export async function gradeTheoryWithRetry(
-  gradeFn: () => Promise<{ score: number; feedback: string }>,
+export async function gradeTheoryWithRetry<T = { score: number; feedback: string }>(
+  gradeFn: () => Promise<T>,
   maxAttempts: number = 3,
   baseDelayMs: number = 500,
   timeoutMs: number = 30000
-): Promise<{ score: number; feedback: string }> {
+): Promise<T> {
   let lastError: any;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -147,6 +147,9 @@ export const processExamJob = async (job: Job | any) => {
 
       if (isTheory) {
         existingAns.writtenAnswer = ans.writtenAnswer;
+        if (ans.subPartAnswers && Array.isArray(ans.subPartAnswers)) {
+          existingAns.subPartAnswers = ans.subPartAnswers;
+        }
         if (existingAns.gradingStatus !== 'GRADED') {
           existingAns.gradingStatus = 'PENDING';
         }
@@ -183,7 +186,8 @@ export const processExamJob = async (job: Job | any) => {
 
     // Ensure any unanswered questions are marked GRADED and not correct
     for (const q of session.questionsServed) {
-      if (!q.selectedAnswer && !q.writtenAnswer && q.gradingStatus === 'PENDING') {
+      const hasSubPartAnswers = Array.isArray(q.subPartAnswers) && q.subPartAnswers.some((sp: any) => sp.writtenAnswer?.trim().length > 0);
+      if (!q.selectedAnswer && !q.writtenAnswer && !hasSubPartAnswers && q.gradingStatus === 'PENDING') {
         q.gradingStatus = 'GRADED';
         q.correct = false;
         q.score = 0;
@@ -202,15 +206,16 @@ export const processExamJob = async (job: Job | any) => {
       }
     }
 
-    // Identify theory answers requiring grading: PENDING or FAILED with writtenAnswer
+    // Identify theory answers requiring grading: PENDING or FAILED with writtenAnswer or subPartAnswers
     const theoryItemsToGrade = session.questionsServed.filter((q: any) => {
       const qDoc = questionMap.get((q.questionId?._id || q.questionId)?.toString());
       const isTheory = qDoc?.type === 'THEORY';
+      const hasSubPartAnswers = Array.isArray(q.subPartAnswers) && q.subPartAnswers.some((sp: any) => sp.writtenAnswer?.trim().length > 0);
+      const hasWrittenAnswer = typeof q.writtenAnswer === 'string' && q.writtenAnswer.trim().length > 0;
       return (
         isTheory &&
         (q.gradingStatus === 'PENDING' || q.gradingStatus === 'FAILED') &&
-        typeof q.writtenAnswer === 'string' &&
-        q.writtenAnswer.trim().length > 0
+        (hasWrittenAnswer || hasSubPartAnswers)
       );
     });
 
@@ -221,21 +226,67 @@ export const processExamJob = async (job: Job | any) => {
           typeof qDoc?.questionText === 'string' && qDoc.questionText.trim().length > 0
             ? qDoc.questionText.trim()
             : 'Theory Question';
-        const modelAnswer = qDoc?.modelAnswer || '';
-        const rubric = qDoc?.rubric || [];
-        const writtenAnswer = item.writtenAnswer || '';
+
+        const isMultiPart = (qDoc?.hasSubParts || (Array.isArray(qDoc?.subParts) && qDoc.subParts.length > 0));
 
         try {
-          const result = await gradeTheoryWithRetry(
-            () => groqProvider.gradeTheoryAnswer(safeQuestionText, modelAnswer, rubric, writtenAnswer),
-            3,
-            500,
-            30000
-          );
-          item.score = result.score;
-          item.feedback = result.feedback;
-          item.correct = result.score >= 0.7;
-          item.gradingStatus = 'GRADED';
+          if (isMultiPart) {
+            const subPartsData = (qDoc.subParts || []).map((sp: any) => {
+              const studentSub = (item.subPartAnswers || []).find((s: any) => s.partId === sp.id);
+              return {
+                partId: sp.id,
+                label: sp.label,
+                prompt: sp.prompt,
+                maxMarks: sp.maxMarks || 1,
+                modelAnswer: sp.modelAnswer,
+                rubric: sp.rubric || [],
+                studentAnswer: studentSub?.writtenAnswer || '',
+              };
+            });
+
+            const multiResult = await gradeTheoryWithRetry(
+              () =>
+                groqProvider.gradeMultiPartTheoryAnswer({
+                  questionStem: safeQuestionText,
+                  diagramCaption: qDoc.diagramCaption,
+                  subParts: subPartsData,
+                }),
+              3,
+              500,
+              35000
+            );
+
+            item.score = multiResult.overallScore;
+            item.feedback = multiResult.overallFeedback;
+            item.correct = multiResult.overallScore >= 0.7;
+            item.subPartAnswers = multiResult.subPartResults.map((sr: any) => ({
+              partId: sr.partId,
+              label: sr.label,
+              writtenAnswer: subPartsData.find((sp: any) => sp.partId === sr.partId)?.studentAnswer || '',
+              score: sr.score,
+              marksAwarded: sr.marksAwarded,
+              maxMarks: sr.maxMarks,
+              feedback: sr.feedback,
+              rubricCriteriaMet: sr.rubricCriteriaMet,
+              correct: sr.score >= 0.7,
+            }));
+            item.gradingStatus = 'GRADED';
+          } else {
+            const modelAnswer = qDoc?.modelAnswer || '';
+            const rubric = qDoc?.rubric || [];
+            const writtenAnswer = item.writtenAnswer || '';
+
+            const result = await gradeTheoryWithRetry(
+              () => groqProvider.gradeTheoryAnswer(safeQuestionText, modelAnswer, rubric, writtenAnswer),
+              3,
+              500,
+              30000
+            );
+            item.score = result.score;
+            item.feedback = result.feedback;
+            item.correct = result.score >= 0.7;
+            item.gradingStatus = 'GRADED';
+          }
 
           try {
             const topicIdStr = (item.topicId?._id || item.topicId)?.toString() || '';
@@ -251,7 +302,6 @@ export const processExamJob = async (job: Job | any) => {
           }
         } catch (gradeError) {
           console.error(`[ExamWorker] Theory grading failed for question ${item.questionId}:`, gradeError);
-          // Timed-out or failed answers get gradingStatus 'FAILED' (answer text preserved, score not set to 0)
           item.gradingStatus = 'FAILED';
           item.score = undefined;
           item.correct = undefined;

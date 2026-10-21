@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import path from 'path';
 import { errorHandler } from './middlewares/errorHandler';
 import { sendResponse } from './utils/sendResponse';
 import { v1Routes } from './routes/v1';
@@ -15,6 +16,9 @@ app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static uploads if using local fallback
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes

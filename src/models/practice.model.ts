@@ -1,6 +1,21 @@
 import { Schema, model } from 'mongoose';
 import { IPracticeSessionDocument } from '../types/practice.types';
 
+const SubPartAnswerSchema = new Schema(
+  {
+    partId: { type: String, required: true },
+    label: { type: String },
+    writtenAnswer: { type: String, default: '' },
+    score: { type: Number },
+    marksAwarded: { type: Number },
+    maxMarks: { type: Number },
+    feedback: { type: String },
+    rubricCriteriaMet: [{ type: String }],
+    correct: { type: Boolean },
+  },
+  { _id: false }
+);
+
 const PracticeAnswerSchema = new Schema(
   {
     submissionId: { type: String, required: true }, // Added for idempotency
@@ -9,6 +24,7 @@ const PracticeAnswerSchema = new Schema(
     difficulty: { type: Number, required: true },
     selectedAnswer: { type: String }, // Optional for theory
     writtenAnswer: { type: String }, // For theory
+    subPartAnswers: [SubPartAnswerSchema], // For multi-part theory questions
     correct: { type: Boolean }, // Optional, might be pending
     gradingStatus: { type: String, enum: ['PENDING', 'GRADED', 'FAILED'], default: 'GRADED' },
     score: { type: Number },

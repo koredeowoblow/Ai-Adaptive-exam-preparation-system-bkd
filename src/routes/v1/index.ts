@@ -15,6 +15,7 @@ import { analyticsRoutes } from './analytics.routes';
 import { integrityRoutes } from './integrity.routes';
 import { aiRoutes } from './ai.routes';
 import { studyPlanRoutes } from './studyPlan.routes';
+import { uploadRoutes } from './upload.routes';
 import rbacRoutes from './rbac.routes';
 
 const router = Router();
@@ -23,6 +24,7 @@ router.use('/departments', departmentRoutes);
 router.use('/courses', courseRoutes);
 router.use('/topics', topicRoutes);
 router.use('/questions', questionRoutes);
+router.use('/uploads', uploadRoutes);
 router.use('/auth', authRoutes);
 router.use('/students', studentRoutes);
 router.use('/mastery', masteryRoutes);

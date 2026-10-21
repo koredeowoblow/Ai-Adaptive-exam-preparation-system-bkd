@@ -383,6 +383,13 @@ export class PracticeService {
       if (existingAns) {
         existingAns.selectedAnswer = ans.selectedAnswer;
         existingAns.writtenAnswer = ans.writtenAnswer;
+        if (ans.subPartAnswers && Array.isArray(ans.subPartAnswers)) {
+          existingAns.subPartAnswers = ans.subPartAnswers.map((sp) => ({
+            partId: sp.partId,
+            label: sp.label,
+            writtenAnswer: sp.writtenAnswer,
+          }));
+        }
         existingAns.timeTaken = ans.timeTaken;
       }
     }
