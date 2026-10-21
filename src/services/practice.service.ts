@@ -59,7 +59,8 @@ export class PracticeService {
         const course = await courseService.getCourseById(data.courseId);
         const studentDeptId = student.departmentId?._id ? student.departmentId._id.toString() : student.departmentId?.toString();
         const courseDeptId = course?.departmentId?._id ? course.departmentId._id.toString() : course?.departmentId?.toString();
-        if (course && courseDeptId && courseDeptId !== studentDeptId) {
+        const isEnrolled = (student.enrolledCourseIds || []).some((id: any) => id.toString() === data.courseId.toString());
+        if (course && courseDeptId && courseDeptId !== studentDeptId && !isEnrolled) {
           throw new AppError('Forbidden: Cannot start session for a course outside your department', 403);
         }
       }
@@ -300,17 +301,6 @@ export class PracticeService {
     if (tokenUser.role === 'student' || tokenUser.type === 'student') {
       if (sessionStudentId !== tokenUserId) {
         throw new AppError('Forbidden: Cannot access session belonging to another student', 403);
-      }
-      // Department constraint check
-      const student = await studentRepository.findById(tokenUserId);
-      if (student && student.departmentId) {
-        const sessionCourseId = (sessionDoc.courseId?._id || sessionDoc.courseId)?.toString();
-        const course = await courseService.getCourseById(sessionCourseId);
-        const studentDeptId = student.departmentId?._id ? student.departmentId._id.toString() : student.departmentId?.toString();
-        const courseDeptId = course?.departmentId?._id ? course.departmentId._id.toString() : course?.departmentId?.toString();
-        if (course && courseDeptId && courseDeptId !== studentDeptId) {
-          throw new AppError('Forbidden: Cannot access session for a course outside your department', 403);
-        }
       }
     }
 

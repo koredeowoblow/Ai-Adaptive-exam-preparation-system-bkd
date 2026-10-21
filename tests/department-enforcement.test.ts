@@ -147,4 +147,47 @@ describe('Department Course & Practice Security Enforcement', () => {
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
   });
+
+  it('(a) allows other-department student to start a session if enrolled in the course (200 or 201)', async () => {
+    // Enroll EE student in the CS course
+    await Student.updateOne({ _id: eeStudentId }, { $addToSet: { enrolledCourseIds: csCourseId } });
+
+    const res = await request(app)
+      .post('/api/v1/practice-sessions/start')
+      .set('Authorization', `Bearer ${eeStudentToken}`)
+      .send({
+        courseId: csCourseId,
+        mode: 'quick',
+        totalQuestions: 5,
+      });
+
+    expect([200, 201]).toContain(res.status);
+    expect(res.body.success).toBe(true);
+  });
+
+  it('(c) allows student to open an old session on a cross-department course (200)', async () => {
+    // Student A (CS) starts a session for CS course
+    const startRes = await request(app)
+      .post('/api/v1/practice-sessions/start')
+      .set('Authorization', `Bearer ${csStudentToken}`)
+      .send({
+        courseId: csCourseId,
+        mode: 'quick',
+        totalQuestions: 5,
+      });
+
+    const sessionId = startRes.body.data?.session?._id || startRes.body.data?._id;
+
+    // Student A's department changes to EE (simulating cross-department old session)
+    await Student.updateOne({ _id: csStudentId }, { departmentId: new mongoose.Types.ObjectId(eeDeptId), enrolledCourseIds: [] });
+
+    // Student A accesses their old session
+    const getRes = await request(app)
+      .get(`/api/v1/practice-sessions/${sessionId}`)
+      .set('Authorization', `Bearer ${csStudentToken}`);
+
+    // Keeps ONLY ownership check: 200 OK, no department 403
+    expect(getRes.status).toBe(200);
+    expect(getRes.body.success).toBe(true);
+  });
 });
