@@ -196,7 +196,7 @@ export class StudentService {
     if (!student) {
       throw new AppError('Student not found', 404);
     }
-    return student;
+    return formatStudentResponse(student);
   }
 
   async setDepartment(id: string, departmentId: string) {
@@ -204,7 +204,7 @@ export class StudentService {
     if (!student) {
       throw new AppError('Student not found', 404);
     }
-    return student;
+    return formatStudentResponse(student);
   }
 
   async enrollCourses(id: string, courseIds: string[]) {
@@ -212,7 +212,7 @@ export class StudentService {
     if (!student) {
       throw new AppError('Student not found', 404);
     }
-    return student;
+    return formatStudentResponse(student);
   }
 
   async removeCourseEnrollment(id: string, courseId: string) {
@@ -220,7 +220,7 @@ export class StudentService {
     if (!student) {
       throw new AppError('Student not found', 404);
     }
-    return student;
+    return formatStudentResponse(student);
   }
 
   async getEnrolledCourses(id: string) {
