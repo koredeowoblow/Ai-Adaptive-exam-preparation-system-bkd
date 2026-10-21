@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { studentController } from '../../controllers/student.controller';
 import { validateRequest } from '../../middlewares/validateRequest';
-import { updateStudentProfileSchema, completeOnboardingSchema, enrollCoursesSchema, promoteStudentSchema } from '../../validators/student.validator';
+import { updateStudentProfileSchema, completeOnboardingSchema, enrollCoursesSchema, promoteStudentSchema, updateCourseExamDatesSchema } from '../../validators/student.validator';
 import { protect } from '../../middlewares/auth.middleware';
 import { asyncHandler } from '../../utils/asyncHandler';
 
@@ -26,6 +26,8 @@ router.use(protect);
  */
 router.get('/profile', asyncHandler(studentController.getProfile));
 router.put('/profile', validateRequest(updateStudentProfileSchema), asyncHandler(studentController.updateProfile));
+router.put('/course-exam-dates', validateRequest(updateCourseExamDatesSchema), asyncHandler(studentController.updateCourseExamDates));
+router.put('/me/course-exam-dates', validateRequest(updateCourseExamDatesSchema), asyncHandler(studentController.updateCourseExamDates));
 router.post('/promote', validateRequest(promoteStudentSchema), asyncHandler(studentController.promote));
 router.post('/onboarding', validateRequest(completeOnboardingSchema), asyncHandler(studentController.completeOnboarding));
 

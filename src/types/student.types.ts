@@ -7,6 +7,7 @@ export interface IStudent {
   departmentId?: Types.ObjectId;
   level?: '100L' | '200L' | '300L' | '400L' | '500L';
   nextExamDate?: string | null;
+  courseExamDates?: Map<string, string>;
   enrolledCourseIds: Types.ObjectId[];
   roleIds: Types.ObjectId[];
   isOnboarded: boolean;

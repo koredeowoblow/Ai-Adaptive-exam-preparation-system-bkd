@@ -85,3 +85,121 @@ export function calculateDaysRemainingInLagos(examDateStr: string): number {
 
   return Math.round((examMs - todayMs) / (1000 * 60 * 60 * 24));
 }
+
+/**
+ * 6:00 PM (18:00) Africa/Lagos cutoff hour for study plan start date.
+ */
+export const PLAN_START_CUTOFF_HOUR = 18;
+
+/**
+ * Computes Lagos startDate based on 18:00 (6 PM) cutoff rule:
+ * - Before 18:00 Lagos: today (YYYY-MM-DD)
+ * - At or after 18:00 Lagos: tomorrow (YYYY-MM-DD)
+ */
+export function calculatePlanStartDateLagos(now: Date = new Date()): string {
+  const lagosHour = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Africa/Lagos',
+      hour: 'numeric',
+      hour12: false,
+    }).format(now)
+  );
+
+  const lagosDateStr = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Lagos',
+  }).format(now);
+
+  if (lagosHour < PLAN_START_CUTOFF_HOUR) {
+    return lagosDateStr;
+  }
+
+  return addDaysToLagosDate(lagosDateStr, 1);
+}
+
+/**
+ * Adds integer days to a YYYY-MM-DD calendar date string.
+ */
+export function addDaysToLagosDate(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const target = new Date(Date.UTC(y, m - 1, d + days));
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${target.getUTCFullYear()}-${pad(target.getUTCMonth() + 1)}-${pad(target.getUTCDate())}`;
+}
+
+/**
+ * Returns integer difference (endDate - startDate) in calendar days.
+ */
+export function getDaysBetweenDates(startDateStr: string, endDateStr: string): number {
+  const [sY, sM, sD] = startDateStr.split('-').map(Number);
+  const [eY, eM, eD] = endDateStr.split('-').map(Number);
+  const sMs = Date.UTC(sY, sM - 1, sD);
+  const eMs = Date.UTC(eY, eM - 1, eD);
+  return Math.round((eMs - sMs) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Returns English weekday name (e.g. 'Monday') for a YYYY-MM-DD date.
+ */
+export function getDayOfWeekName(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'long' }).format(date);
+}
+
+/**
+ * Derives the student's next upcoming exam date dynamically at read time.
+ * Single source of truth: earliest date >= Lagos today from courseExamDates.
+ * Falls back to legacy nextExamDate only if no future course dates are defined.
+ */
+export function deriveNextExamDate(
+  courseExamDates?: Map<string, string> | Record<string, string> | null,
+  legacyNextExamDate?: string | null,
+  enrolledCourseIds?: (string | { toString(): string })[]
+): string | null {
+  const lagosToday = getLagosTodayString();
+  const validFutureDates: string[] = [];
+
+  if (courseExamDates) {
+    const enrolledSet = enrolledCourseIds
+      ? new Set(
+          enrolledCourseIds
+            .filter(Boolean)
+            .map((item: any) => (item._id ? item._id.toString() : item.toString()))
+        )
+      : null;
+
+    const entries =
+      courseExamDates instanceof Map
+        ? Array.from(courseExamDates.entries())
+        : Object.entries(courseExamDates);
+
+    for (const [courseId, dateStr] of entries) {
+      if (typeof dateStr === 'string' && dateStr.trim()) {
+        const cleanDate = dateStr.trim();
+        // If enrolledCourseIds is provided, key must be in enrolled courses
+        if (enrolledSet && !enrolledSet.has(courseId.toString())) {
+          continue;
+        }
+        if (cleanDate >= lagosToday) {
+          validFutureDates.push(cleanDate);
+        }
+      }
+    }
+  }
+
+  if (validFutureDates.length > 0) {
+    validFutureDates.sort(); // Lexicographical sort on YYYY-MM-DD
+    return validFutureDates[0];
+  }
+
+  // Legacy fallback if valid and >= lagosToday
+  if (
+    legacyNextExamDate &&
+    typeof legacyNextExamDate === 'string' &&
+    legacyNextExamDate.trim() >= lagosToday
+  ) {
+    return legacyNextExamDate.trim();
+  }
+
+  return null;
+}

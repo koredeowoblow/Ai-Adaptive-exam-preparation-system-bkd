@@ -46,3 +46,13 @@ export const promoteStudentSchema = z.object({
     nextExamDate: examDateSchema,
   }),
 });
+
+export const updateCourseExamDatesSchema = z.object({
+  body: z.union([
+    z.object({
+      courseExamDates: z.record(z.string(), z.string()),
+    }),
+    z.record(z.string(), z.string()),
+  ]),
+});
+

@@ -18,6 +18,14 @@ export class StudentController {
     return sendResponse(res, 200, 'Profile updated successfully', profile);
   };
 
+  updateCourseExamDates = async (req: Request, res: Response) => {
+    // @ts-ignore
+    const studentId = req.user.id || req.user._id;
+    const input = req.body?.courseExamDates || req.body || {};
+    const profile = await studentService.updateCourseExamDates(studentId, input);
+    return sendResponse(res, 200, 'Course exam dates updated successfully', profile);
+  };
+
   promote = async (req: Request, res: Response) => {
     // @ts-ignore
     const studentId = req.user.id || req.user._id;

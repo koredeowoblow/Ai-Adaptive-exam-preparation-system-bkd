@@ -4,6 +4,7 @@ import { studentRepository } from '../repositories/student.repository';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
+import { deriveNextExamDate } from '../utils/dateValidation';
 
 export class AuthService {
   async registerStudent(data: any) {
@@ -100,6 +101,16 @@ export class AuthService {
       role = 'admin';
     }
 
+    const rawMap = (student as any).courseExamDates || {};
+    const plainMap: Record<string, string> =
+      rawMap instanceof Map ? Object.fromEntries(rawMap.entries()) : { ...rawMap };
+
+    const derivedNextExam = deriveNextExamDate(
+      plainMap,
+      (student as any).nextExamDate,
+      student.enrolledCourseIds
+    );
+
     return {
       id: student._id.toString(),
       _id: student._id.toString(),
@@ -107,6 +118,8 @@ export class AuthService {
       email: student.email,
       departmentId: student.departmentId?.toString(),
       level: (student as any).level ?? '100L',
+      nextExamDate: derivedNextExam,
+      courseExamDates: plainMap,
       enrolledCourseIds: student.enrolledCourseIds,
       isOnboarded: (student as any).isOnboarded ?? !!student.departmentId,
       role,

@@ -14,6 +14,7 @@ import { dashboardRoutes } from './dashboard.routes';
 import { analyticsRoutes } from './analytics.routes';
 import { integrityRoutes } from './integrity.routes';
 import { aiRoutes } from './ai.routes';
+import { studyPlanRoutes } from './studyPlan.routes';
 import rbacRoutes from './rbac.routes';
 
 const router = Router();
@@ -33,6 +34,7 @@ router.use('/dashboard', dashboardRoutes);
 router.use('/analytics', analyticsRoutes);
 router.use('/integrity', integrityRoutes);
 router.use('/ai', aiRoutes);
+router.use('/study-plans', studyPlanRoutes);
 router.use('/rbac', rbacRoutes);
 
 export const v1Routes = router;

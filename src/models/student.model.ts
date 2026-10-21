@@ -34,6 +34,11 @@ const StudentSchema = new Schema<IStudentDocument>(
       default: null,
       trim: true,
     },
+    courseExamDates: {
+      type: Map,
+      of: String,
+      default: () => new Map(),
+    },
     enrolledCourseIds: [
       {
         type: Schema.Types.ObjectId,

@@ -1,8 +1,31 @@
+import mongoose from 'mongoose';
 import { studentRepository, StudentQueryOptions } from '../repositories/student.repository';
 import { UpdateStudentDTO, CompleteOnboardingDTO, PromoteStudentDTO } from '../types/student.types';
 import { AppError } from '../utils/AppError';
 import { Course } from '../models/course.model';
-import { validateExamDate } from '../utils/dateValidation';
+import { Student } from '../models/student.model';
+import { StudyPlan } from '../models/studyPlan.model';
+import { validateExamDate, deriveNextExamDate } from '../utils/dateValidation';
+
+export function formatStudentResponse(student: any) {
+  if (!student) return null;
+  const doc = student.toObject ? student.toObject() : { ...student };
+  const rawMap = doc.courseExamDates || (student.get ? student.get('courseExamDates') : null) || {};
+  const plainMap: Record<string, string> =
+    rawMap instanceof Map ? Object.fromEntries(rawMap.entries()) : { ...rawMap };
+
+  const derivedNextExam = deriveNextExamDate(
+    plainMap,
+    doc.nextExamDate,
+    doc.enrolledCourseIds
+  );
+
+  return {
+    ...doc,
+    courseExamDates: plainMap,
+    nextExamDate: derivedNextExam,
+  };
+}
 
 export class StudentService {
   async getStudentProfile(id: string) {
@@ -10,7 +33,7 @@ export class StudentService {
     if (!student) {
       throw new AppError('Student not found', 404);
     }
-    return student;
+    return formatStudentResponse(student);
   }
 
   async promoteStudent(studentId: string, data: PromoteStudentDTO) {
@@ -99,17 +122,65 @@ export class StudentService {
       cleanExamDate
     );
 
-    if (!updated) {
-      // Check if another concurrent request already completed this exact promotion
-      const recheck = await studentRepository.findByIdWithCourses(studentId);
-      if (recheck && recheck.level === data.targetLevel) {
-        // Idempotent resolution for concurrent double-submit: return state without double-enrollment
-        return recheck;
-      }
-      throw new AppError('Concurrent update conflict. Please refresh and try again.', 409);
+    // 8. Archive any active study plan upon level promotion
+    await StudyPlan.updateMany(
+      { studentId, status: 'active' },
+      { $set: { status: 'archived', archivedReason: 'LEVEL_PROMOTION' } }
+    );
+
+    return formatStudentResponse(updated);
+  }
+
+  async updateCourseExamDates(studentId: string, dates: Record<string, string>) {
+    if (!mongoose.isValidObjectId(studentId)) {
+      throw new AppError('Invalid student ID format', 400);
     }
 
-    return updated;
+    const student = await Student.findById(studentId);
+    if (!student) {
+      throw new AppError('Student not found', 404);
+    }
+
+    const enrolledCourseIds = (student.enrolledCourseIds || []).map((id: any) => id.toString());
+    const enrolledSet = new Set(enrolledCourseIds);
+
+    const validatedDates: Record<string, string> = {};
+
+    for (const [courseId, dateStr] of Object.entries(dates)) {
+      // 1. Key safety: validate format as valid ObjectId
+      if (!mongoose.isValidObjectId(courseId)) {
+        throw new AppError(`Invalid course ID format: ${courseId}`, 400);
+      }
+
+      // 2. Key safety: ensure course is in student's enrolled courses
+      if (!enrolledSet.has(courseId)) {
+        throw new AppError(`Course ${courseId} is not in enrolled courses`, 400);
+      }
+
+      // 3. Date validation
+      const check = validateExamDate(dateStr);
+      if (!check.isValid || !check.cleanDate) {
+        throw new AppError(check.error || `Invalid exam date for course ${courseId}`, 400);
+      }
+
+      validatedDates[courseId] = check.cleanDate;
+    }
+
+    // Atomic bulk overwrite
+    const updated = await Student.findByIdAndUpdate(
+      studentId,
+      {
+        $set: {
+          courseExamDates: validatedDates,
+        },
+      },
+      { returnDocument: 'after' }
+    )
+      .populate('departmentId', 'name')
+      .populate('enrolledCourseIds', 'title code level')
+      .select('-passwordHash');
+
+    return formatStudentResponse(updated);
   }
 
   async updateStudent(id: string, data: UpdateStudentDTO) {
@@ -117,7 +188,7 @@ export class StudentService {
     if (!student) {
       throw new AppError('Student not found', 404);
     }
-    return student;
+    return formatStudentResponse(student);
   }
 
   async completeOnboarding(id: string, data: CompleteOnboardingDTO) {
