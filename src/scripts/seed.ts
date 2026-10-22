@@ -228,11 +228,54 @@ export async function seed() {
 
           if (isTheory) {
             questionData.type = "THEORY";
-            questionData.modelAnswer = "This is a detailed model answer for the concept: " + qTemplate.exp;
-            questionData.rubric = [
-              { point: "Identifies core concept", weight: 0.5 },
-              { point: "Provides accurate reasoning", weight: 0.5 }
-            ];
+            if (i % 8 === 7) {
+              questionData.hasSubParts = true;
+              questionData.subParts = [
+                {
+                  id: "a",
+                  label: "1(a)",
+                  prompt: `State the theoretical principles and core mathematical definition of ${qTemplate.q.replace(/\?$/, '')}.`,
+                  maxMarks: 4,
+                  modelAnswer: `Fundamental definitions and properties: ${qTemplate.exp}`,
+                  rubric: [
+                    { point: "Accurate statement of definition and core theory", weight: 2 },
+                    { point: "Mathematical or algorithmic formulation", weight: 2 }
+                  ],
+                  order: 1
+                },
+                {
+                  id: "b_i",
+                  label: "1(b)(i)",
+                  prompt: `Analyze a practical implementation scenario and evaluate performance implications or trade-offs.`,
+                  maxMarks: 3,
+                  modelAnswer: `Practical implementation analysis: ${qTemplate.exp}`,
+                  rubric: [
+                    { point: "Correct scenario application", weight: 1.5 },
+                    { point: "Evaluation of engineering trade-offs", weight: 1.5 }
+                  ],
+                  order: 2
+                },
+                {
+                  id: "b_ii",
+                  label: "1(b)(ii)",
+                  prompt: `Formulate an optimization or mitigation strategy for potential edge cases or failure modes.`,
+                  maxMarks: 3,
+                  modelAnswer: `Robust mitigation strategy based on: ${qTemplate.exp}`,
+                  rubric: [
+                    { point: "Feasible optimization strategy", weight: 1.5 },
+                    { point: "Edge-case handling and recovery mechanism", weight: 1.5 }
+                  ],
+                  order: 3
+                }
+              ];
+            } else {
+              questionData.hasSubParts = false;
+              questionData.modelAnswer = "This is a detailed model answer for the concept: " + qTemplate.exp;
+              questionData.rubric = [
+                { point: "Identifies core concept", weight: 0.5 },
+                { point: "Provides accurate reasoning", weight: 0.5 }
+              ];
+            }
           } else {
             questionData.type = "MULTIPLE_CHOICE";
             questionData.options = [
