@@ -12,9 +12,16 @@ const isMock = env.REDIS_HOST === 'mock' || env.REDIS_HOST === 'none';
 
 const connection: any = isMock
   ? new (require('ioredis-mock'))()
+  : env.REDIS_URL
+  ? new IORedis(env.REDIS_URL, {
+      maxRetriesPerRequest: null,
+      enableOfflineQueue: false,
+      retryStrategy: (times: number) => Math.min(times * 100, 3000),
+    })
   : new IORedis({
       host: env.REDIS_HOST,
       port: parseInt(env.REDIS_PORT, 10),
+      password: env.REDIS_PASSWORD,
       maxRetriesPerRequest: null,
       enableOfflineQueue: false,
       retryStrategy: (times: number) => Math.min(times * 100, 3000),

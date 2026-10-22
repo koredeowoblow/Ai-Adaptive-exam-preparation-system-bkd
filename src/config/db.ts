@@ -2,8 +2,12 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import dns from 'dns';
 
-// Force Google DNS to resolve MongoDB Atlas SRV records if local DNS is blocking them
-dns.setServers(['8.8.8.8', '8.8.4.4']);
+// Allow custom DNS for ISPs that block MongoDB Atlas SRV records, while preserving container DNS in production
+if (process.env.CUSTOM_DNS) {
+  dns.setServers(process.env.CUSTOM_DNS.split(',').map((s) => s.trim()));
+} else if (process.env.NODE_ENV !== 'production' && !process.env.DOCKER_CONTAINER && !process.env.DISABLE_CUSTOM_DNS) {
+  dns.setServers(['8.8.8.8', '8.8.4.4']);
+}
 
 dotenv.config();
 
