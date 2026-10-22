@@ -32,7 +32,16 @@ export interface IPracticeAnswer {
   explanationStatus?: 'PENDING' | 'READY' | 'FAILED';
 }
 
-export type AntiCheatEventType = 'TAB_SWITCH' | 'PASTE_DETECTED' | 'FAST_ANSWER' | 'DEVTOOLS_DETECTED' | 'RIGHT_CLICK_BLOCKED';
+export type AntiCheatEventType = 
+  | 'TAB_SWITCH' 
+  | 'PASTE_DETECTED' 
+  | 'FAST_ANSWER' 
+  | 'DEVTOOLS_DETECTED' 
+  | 'RIGHT_CLICK_BLOCKED' 
+  | 'MULTIPLE_VOICES_DETECTED'
+  | 'AI_PASTE_DETECTED'
+  | 'UNNATURAL_TYPING_VELOCITY'
+  | 'AI_HONEYPOT_TRIGGERED';
 
 export interface IAntiCheatEvent {
   type: AntiCheatEventType;
@@ -46,7 +55,7 @@ export interface IPracticeSession {
   courseId: Types.ObjectId;
   startedAt: Date;
   endedAt?: Date;
-  status: 'active' | 'PENDING_GRADING' | 'completed' | 'FAILED';
+  status: 'active' | 'PENDING_GRADING' | 'completed' | 'FAILED' | 'TERMINATED_BY_PROCTOR';
   currentQuestionId?: Types.ObjectId;
   currentQuestionStartedAt?: Date;
   questionsServed: IPracticeAnswer[];
@@ -65,6 +74,9 @@ export interface IPracticeSession {
   archivedAt?: Date;
   isGradingPending?: boolean;
   gradingState?: string;
+  proctorWarning?: string;
+  proctorWarningAt?: Date;
+  terminatedReason?: string;
 }
 
 export interface IPracticeSessionDocument extends IPracticeSession, Document {}

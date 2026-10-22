@@ -1,6 +1,103 @@
 import { SeedQuestion } from "./lasustech-data";
+import { SeedDiagrams } from "./seed-diagrams";
 
 export const csc101ExpandedQuestions: SeedQuestion[] = [
+  {
+    q: "Consider the digital logic circuit schematic shown in Figure 1.1, representing a 1-bit binary Full Adder with carry lookahead logic.",
+    exp: "Comprehensive digital logic analysis of a 1-bit full adder circuit including Boolean formulation, truth table derivation, propagation delay, and glitch hazard mitigation.",
+    type: "THEORY",
+    diagramUrl: SeedDiagrams.fullAdderCircuit,
+    diagramCaption: "Figure 1.1: 1-Bit Full Adder Logic Gate Schematic",
+    hasSubParts: true,
+    subParts: [
+      {
+        id: "part-1a",
+        label: "1(a)",
+        prompt: "Define the operational role of a Full Adder in modern arithmetic logic units (ALU), and distinguish its functionality from a Half Adder.",
+        maxMarks: 4,
+        modelAnswer: "A Full Adder computes the arithmetic sum of three single binary bits: two input operands (A and B) and an incoming carry bit (Cin). In contrast, a Half Adder only adds two single-bit operands (A and B) and lacks any mechanism to incorporate an incoming carry from a previous arithmetic stage. Consequently, cascading multiple Full Adders allows arbitrary n-bit binary integer addition in ALUs.",
+        rubric: [
+          { point: "Accurate distinction regarding Cin acceptance between Full and Half Adders", weight: 2 },
+          { point: "Operational role in cascading multi-bit arithmetic units within modern ALUs", weight: 2 }
+        ],
+        order: 1
+      },
+      {
+        id: "part-1a-i",
+        label: "1(a)(i)",
+        prompt: "Derive the canonical Boolean algebraic expression for the Sum output terminal S in terms of inputs A, B, and Cin.",
+        maxMarks: 3,
+        modelAnswer: "The Sum output represents the odd-parity XOR sum of all three inputs: S = A ⊕ B ⊕ Cin. In canonical sum-of-products (SOP) minterm form: S = A'B'Cin + A'BCin' + AB'Cin' + ABCin.",
+        rubric: [
+          { point: "Correct Boolean expression S = A ⊕ B ⊕ Cin", weight: 1.5 },
+          { point: "Canonical SOP or intermediate XOR gate derivation", weight: 1.5 }
+        ],
+        order: 2
+      },
+      {
+        id: "part-1a-ii",
+        label: "1(a)(ii)",
+        prompt: "Derive the minimized Boolean algebraic expression for the Carry Out (Cout) terminal, and show how it is synthesized from gates XOR 1, AND 1, AND 2, and OR 1 in Figure 1.1.",
+        maxMarks: 4,
+        modelAnswer: "The Carry Out signal is generated when at least two inputs are 1: Cout = (A · B) + (Cin · (A ⊕ B)). Gate synthesis: AND 1 computes A · B, XOR 1 computes A ⊕ B, AND 2 computes Cin · (A ⊕ B), and OR 1 sums these two partial terms to yield Cout.",
+        rubric: [
+          { point: "Correct Boolean equation Cout = (A·B) + Cin·(A⊕B)", weight: 2 },
+          { point: "Explicit mapping of terms to circuit gates AND1, AND2, and OR1", weight: 2 }
+        ],
+        order: 3
+      },
+      {
+        id: "part-1a-iii",
+        label: "1(a)(iii)",
+        prompt: "Construct the complete truth table for all eight input combinations of (A, B, Cin) verifying the Sum and Carry Out outputs.",
+        maxMarks: 4,
+        modelAnswer: "Truth table: (0,0,0)->(S=0,Cout=0); (0,0,1)->(S=1,Cout=0); (0,1,0)->(S=1,Cout=0); (0,1,1)->(S=0,Cout=1); (1,0,0)->(S=1,Cout=0); (1,0,1)->(S=0,Cout=1); (1,1,0)->(S=0,Cout=1); (1,1,1)->(S=1,Cout=1).",
+        rubric: [
+          { point: "All 8 input combinations listed systematically", weight: 2 },
+          { point: "100% accurate Sum and Carry Out evaluation across all rows", weight: 2 }
+        ],
+        order: 4
+      },
+      {
+        id: "part-1b-i",
+        label: "1(b)(i)",
+        prompt: "Refer to the timing waveform shown below. Explain what causes the transient static-1 hazard glitch at Output Y during input transitions.",
+        diagramUrl: SeedDiagrams.timingWaveform,
+        diagramCaption: "Figure 1.2: Gate Propagation Delay & Hazard Glitch Waveform",
+        maxMarks: 5,
+        modelAnswer: "Static hazards occur due to unequal propagation delays along converging signal paths. When input A transitions, the direct path to the gate responds faster than the delayed path through Node X (Δt = 4.2ns). During this brief propagation window, both inputs to the output gate momentarily satisfy the false condition, dropping the output to 0 before recovering to 1.",
+        rubric: [
+          { point: "Identification of unequal path propagation delays", weight: 2.5 },
+          { point: "Explanation of momentary invalid state during signal race", weight: 2.5 }
+        ],
+        order: 5
+      },
+      {
+        id: "part-1b-ii",
+        label: "1(b)(ii)",
+        prompt: "Propose two engineering remedies to eliminate or mask this hazard glitch in synchronous high-speed digital systems.",
+        maxMarks: 4,
+        modelAnswer: "1) Adding redundant consensus terms (hazard-free logic synthesis) on Karnaugh maps to bridge adjacent minterm groupings. 2) Synchronous clock gating and registering outputs into D flip-flops, sampling signals only after the propagation delay and glitch have settled.",
+        rubric: [
+          { point: "Consensus terms / redundant cover on Karnaugh map", weight: 2 },
+          { point: "Synchronous registered output / clock sampling delay", weight: 2 }
+        ],
+        order: 6
+      },
+      {
+        id: "part-1c",
+        label: "1(c)",
+        prompt: "Discuss the latency bottleneck of cascading 32 such 1-bit Full Adders into a 32-bit Ripple Carry Adder, and explain how Carry Lookahead Adders (CLA) overcome this limitation.",
+        maxMarks: 4,
+        modelAnswer: "In a 32-bit Ripple Carry Adder, the carry bit must sequentially propagate through all 32 stages, resulting in an O(n) delay (32 * 2 gate delays = 64 gate delays). Carry Lookahead Adders overcome this by precomputing carry generate (Gi = Ai · Bi) and carry propagate (Pi = Ai ⊕ Bi) signals in parallel using two-level Boolean logic, cutting addition latency to O(log n).",
+        rubric: [
+          { point: "Accurate analysis of O(n) carry chain ripple delay bottleneck", weight: 2 },
+          { point: "Explanation of parallel generate (G) and propagate (P) logic in CLA", weight: 2 }
+        ],
+        order: 7
+      }
+    ]
+  },
   { q: "What is the primary function of the Central Processing Unit (CPU)?", a: "Storing long-term files", b: "Executing instructions and processing data", c: "Managing network routing", d: "Rendering sound signals", ans: "B", exp: "The CPU performs arithmetic, logical, and control operations to execute program instructions." },
   { q: "Which number system is native to digital computer hardware?", a: "Decimal", b: "Binary", c: "Octal", d: "Hexadecimal", ans: "B", exp: "Digital electronics operate on high and low voltage states representing binary 1 and 0." },
   { q: "What is the role of an operating system kernel?", a: "Translating HTML", b: "Core resource management and hardware abstraction", c: "Scanning malware", d: "Compiling Python", ans: "B", exp: "The kernel manages CPU, memory, and device drivers at the lowest privilege level." },
@@ -42,6 +139,100 @@ export const csc101ExpandedQuestions: SeedQuestion[] = [
 ];
 
 export const csc102ExpandedQuestions: SeedQuestion[] = [
+  {
+    q: "Figure 6.1 displays the state transition graph of a Deterministic Finite Automaton (DFA) over the alphabet Σ = {0, 1}.",
+    exp: "Formal language and automata analysis of a 3-state DFA verifying language recognition, string tracing, transition functions, and regular expression synthesis.",
+    type: "THEORY",
+    diagramUrl: SeedDiagrams.dfaAutomaton,
+    diagramCaption: "Figure 6.1: DFA State Transition Graph for Language L",
+    hasSubParts: true,
+    subParts: [
+      {
+        id: "part-dfa-1a",
+        label: "1a",
+        prompt: "Define a Deterministic Finite Automaton formally as a 5-tuple M = (Q, Σ, δ, q0, F) and specify the exact mathematical set components for the automaton illustrated in Figure 6.1.",
+        maxMarks: 4,
+        modelAnswer: "A DFA is a 5-tuple M = (Q, Σ, δ, q0, F) where: Q is the finite set of states {q0, q1, q2}; Σ is the finite input alphabet {0, 1}; δ: Q × Σ → Q is the transition function; q0 ∈ Q is the designated initial state (q0); and F ⊆ Q is the set of accepting / final states {q2}.",
+        rubric: [
+          { point: "Accurate theoretical 5-tuple definition of a DFA", weight: 2 },
+          { point: "Correct specification of Q, Σ, q0, and F from Figure 6.1", weight: 2 }
+        ],
+        order: 1
+      },
+      {
+        id: "part-dfa-ai",
+        label: "ai",
+        prompt: "Trace the step-by-step state sequence for each of the following input strings, and state whether each string is ACCEPTED or REJECTED: (i) '10101', (ii) '00100', (iii) '1101'.",
+        maxMarks: 4,
+        modelAnswer: "(i) '10101': q0 --1--> q0 --0--> q1 --1--> q2 --0--> q1 --1--> q2 (Ends in q2: ACCEPTED). (ii) '00100': q0 --0--> q1 --0--> q1 --1--> q2 --0--> q1 --0--> q1 (Ends in q1: REJECTED). (iii) '1101': q0 --1--> q0 --1--> q0 --0--> q1 --1--> q2 (Ends in q2: ACCEPTED).",
+        rubric: [
+          { point: "Accurate path trace for string (i) and correct acceptance verdict", weight: 1.5 },
+          { point: "Accurate path traces for strings (ii) and (iii) with correct verdicts", weight: 2.5 }
+        ],
+        order: 2
+      },
+      {
+        id: "part-dfa-aii",
+        label: "aii",
+        prompt: "State in precise mathematical set-builder notation the exact regular language L recognized by this automaton.",
+        maxMarks: 3,
+        modelAnswer: "L = { w ∈ {0, 1}* | w ends with the substring '01' }. Formally: L = { x01 | x ∈ {0, 1}* }.",
+        rubric: [
+          { point: "Clear identification that strings must terminate with '01'", weight: 1.5 },
+          { point: "Proper formal set-builder or concatenation notation", weight: 1.5 }
+        ],
+        order: 3
+      },
+      {
+        id: "part-dfa-aiii",
+        label: "aiii",
+        prompt: "Construct the complete state transition table δ(q, σ) for all states q ∈ Q and inputs σ ∈ Σ.",
+        maxMarks: 3,
+        modelAnswer: "Transition Table:\nState | Input 0 | Input 1\n----------------------\n-> q0 |   q1    |   q0  \n   q1 |   q1    |   q2  \n * q2 |   q1    |   q0  ",
+        rubric: [
+          { point: "Systematic matrix/table structure with initial and accepting indicators", weight: 1 },
+          { point: "100% correct transition targets across all 6 state-input combinations", weight: 2 }
+        ],
+        order: 4
+      },
+      {
+        id: "part-dfa-1b",
+        label: "1b",
+        prompt: "Derive an equivalent regular expression for the language accepted by this DFA using the state elimination technique or Arden's Lemma.",
+        maxMarks: 4,
+        modelAnswer: "Starting at q0, strings can loop on '1's or consume any sequence of '0's and '1's as long as they terminate with '01'. The resulting minimal regular expression is: (0 + 1)* 0 1.",
+        rubric: [
+          { point: "Valid derivation steps via state elimination or prefix analysis", weight: 2 },
+          { point: "Accurate final regular expression (0+1)*01", weight: 2 }
+        ],
+        order: 5
+      },
+      {
+        id: "part-dfa-bi",
+        label: "bi",
+        prompt: "State the Pumping Lemma for regular languages, and outline the proof technique to establish that the non-regular language L_pal = { w w^R | w ∈ {0,1}* } cannot be recognized by any finite automaton.",
+        maxMarks: 4,
+        modelAnswer: "The Pumping Lemma states that for any regular language L, there exists a pumping length p such that any string s ∈ L with |s| >= p can be split into s = xyz satisfying: 1) |y| > 0, 2) |xy| <= p, 3) for all i >= 0, x(y^i)z ∈ L. To prove L_pal is not regular, choose string s = 0^p 1 1 0^p. Because |xy| <= p, y consists purely of 0s. Pumping with i = 0 or 2 yields an unequal count of 0s on the sides, violating symmetry and contradicting regularity.",
+        rubric: [
+          { point: "Precise statement of Pumping Lemma 3 conditions", weight: 2 },
+          { point: "Sound contradiction proof by pumping a chosen adversary string", weight: 2 }
+        ],
+        order: 6
+      },
+      {
+        id: "part-dfa-bii",
+        label: "bii",
+        prompt: "Explain how to construct a DFA that recognizes the intersection of two regular languages L1 and L2 using the Cartesian Product Machine construction.",
+        maxMarks: 4,
+        modelAnswer: "Given DFAs M1 = (Q1, Σ, δ1, q01, F1) and M2 = (Q2, Σ, δ2, q02, F2), the product DFA M_inter is defined with Q = Q1 × Q2, start state (q01, q02), transition function δ((p, q), a) = (δ1(p, a), δ2(q, a)), and accepting states F = F1 × F2. A string is accepted if and only if both machines simultaneously land in their respective accepting states.",
+        rubric: [
+          { point: "Formulation of Cartesian product states Q1 × Q2 and composite transitions", weight: 2 },
+          { point: "Acceptance condition F1 × F2 for language intersection", weight: 2 }
+        ],
+        order: 7
+      }
+    ]
+  },
   { q: "What is an algorithm in computing?", a: "A programming language syntax", b: "Step-by-step sequence of instructions to solve a problem", c: "A hardware component", d: "A database table", ans: "B", exp: "An algorithm is an unambiguous, finite sequence of steps solving a specific computational task." },
   { q: "Which graphical tool represents logic flow with shapes like diamonds and rectangles?", a: "UML Class Diagram", b: "Flowchart", c: "Circuit schematic", d: "Entity Relationship Diagram", ans: "B", exp: "Flowcharts use standardized symbols to trace decision branches and execution flow." },
   { q: "What control structure repeatedly executes a block of code while a condition is true?", a: "Sequence", b: "Selection", c: "Iteration / Loop", d: "Exception", ans: "C", exp: "While and for loops iterate code blocks until termination criteria are met." },
@@ -89,6 +280,88 @@ export const csc102ExpandedQuestions: SeedQuestion[] = [
 ];
 
 export const csc201ExpandedQuestions: SeedQuestion[] = [
+  {
+    q: "Figure 4.1 shows an unbalanced binary search tree undergoing an AVL Left-Right (LR) double rotation after the insertion of key 35.",
+    exp: "Advanced data structure analysis of AVL self-balancing binary search trees, rotation mechanics, height invariants, and logarithmic complexity guarantees.",
+    type: "THEORY",
+    diagramUrl: SeedDiagrams.avlRotation,
+    diagramCaption: "Figure 4.1: AVL Tree Left-Right (LR) Double Rotation",
+    hasSubParts: true,
+    subParts: [
+      {
+        id: "part-avl-1a",
+        label: "1(a)",
+        prompt: "Define an AVL tree and state its fundamental height-balance invariant in terms of subtree heights and balance factors (BF).",
+        maxMarks: 3,
+        modelAnswer: "An AVL tree is a strictly self-balancing binary search tree where the heights of the left and right subtrees of any node differ by at most 1. The balance factor is defined as BF(node) = height(left_subtree) - height(right_subtree), and must satisfy BF(node) ∈ {-1, 0, +1} for all nodes in the tree.",
+        rubric: [
+          { point: "Exact mathematical definition of balance factor BF = h_left - h_right", weight: 1.5 },
+          { point: "Permitted balance factor range {-1, 0, +1} invariant", weight: 1.5 }
+        ],
+        order: 1
+      },
+      {
+        id: "part-avl-1a-i",
+        label: "1(a)(i)",
+        prompt: "Calculate the balance factor of nodes 50, 20, and 35 in the unbalanced tree of Figure 4.1, and explain why a single Right (LL) rotation on node 50 is insufficient to restore balance.",
+        maxMarks: 4,
+        modelAnswer: "In the unbalanced tree: Node 35 has BF = 0 (leaf node); Node 20 has BF = -1 (left height 0, right height 1); Node 50 has BF = +2 (left height 2, right height 0). A single Right rotation on node 50 fails because the left child (node 20) is right-heavy (BF = -1), which would merely transfer the imbalance rather than resolve it, necessitating a double LR rotation.",
+        rubric: [
+          { point: "Correct calculation of BF for nodes 50 (+2), 20 (-1), and 35 (0)", weight: 2 },
+          { point: "Identification that the zig-zag (LR) pattern requires two opposing rotations", weight: 2 }
+        ],
+        order: 2
+      },
+      {
+        id: "part-avl-1a-ii",
+        label: "1(a)(ii)",
+        prompt: "Step through the two sequential rotation phases (Left rotation on node 20 followed by Right rotation on node 50), showing intermediate pointers and the final balanced root.",
+        maxMarks: 4,
+        modelAnswer: "Phase 1: Left rotation on child node 20 elevates node 35 to become the left child of node 50, with node 20 becoming the left child of node 35 (transforming the LR zig-zag into an LL line: 50 -> 35 -> 20). Phase 2: Right rotation on root node 50 elevates node 35 to the new tree root, with node 20 as its left child and node 50 as its right child. All nodes now have BF = 0.",
+        rubric: [
+          { point: "Accurate trace of Phase 1 left rotation on node 20", weight: 2 },
+          { point: "Accurate trace of Phase 2 right rotation on node 50 and final root 35", weight: 2 }
+        ],
+        order: 3
+      },
+      {
+        id: "part-avl-1a-iii",
+        label: "1(a)(iii)",
+        prompt: "Prove that the worst-case search, insertion, and deletion time complexities in an AVL tree containing n keys remain strictly O(log n).",
+        maxMarks: 4,
+        modelAnswer: "The maximum height h of an AVL tree of n nodes is bounded by Fibonacci tree growth: n(h) = n(h-1) + n(h-2) + 1 >= F_{h+2} - 1. Solving the recurrence yields h < 1.4404 log2(n + 2) - 0.328. Because binary search tree traversal time is proportional to height, search, insertion, and deletion (which each require at most O(h) rotations) are strictly bounded by O(log n).",
+        rubric: [
+          { point: "Mathematical connection between minimum AVL nodes and Fibonacci growth", weight: 2 },
+          { point: "Derivation of maximum height bound h <= 1.44 log2(n) and O(log n) complexity", weight: 2 }
+        ],
+        order: 4
+      },
+      {
+        id: "part-avl-1b-i",
+        label: "1(b)(i)",
+        prompt: "Compare the structural overhead and rebalancing frequencies between AVL Trees and Red-Black Trees in real-world operating system kernel schedulers (e.g., Linux CFS) and database indexes.",
+        maxMarks: 4,
+        modelAnswer: "AVL trees are more strictly balanced than Red-Black trees (max height ~1.44 log n vs ~2 log n), making AVL trees faster for read-heavy lookup workloads. However, insertions in AVL trees may require rebalancing up the spine, whereas Red-Black trees require at most 2 rotations per insertion and 3 rotations per deletion. Therefore, write-heavy kernel schedulers and general associative maps (e.g. C++ std::map, Linux CFS) prefer Red-Black trees for lower rebalancing overhead.",
+        rubric: [
+          { point: "Strict balance vs looser balance comparison (read performance)", weight: 2 },
+          { point: "Rotation count overhead comparison on frequent writes (Red-Black advantage)", weight: 2 }
+        ],
+        order: 5
+      },
+      {
+        id: "part-avl-1b-ii",
+        label: "1(b)(ii)",
+        prompt: "Write pseudocode or TypeScript algorithm for detecting height imbalance and triggering the appropriate rotation (LL, RR, LR, RL) upon inserting a new key into an AVL tree.",
+        maxMarks: 5,
+        modelAnswer: "function rebalance(node: AVLNode): AVLNode {\n  updateHeight(node);\n  const balance = getBalance(node);\n  if (balance > 1) {\n    if (getBalance(node.left) < 0) node.left = rotateLeft(node.left); // LR\n    return rotateRight(node); // LL\n  }\n  if (balance < -1) {\n    if (getBalance(node.right) > 0) node.right = rotateRight(node.right); // RL\n    return rotateLeft(node); // RR\n  }\n  return node;\n}",
+        rubric: [
+          { point: "Correct calculation and branch conditions for balance > 1 and balance < -1", weight: 2.5 },
+          { point: "Accurate double-rotation triggers (LR and RL) before outer rotation", weight: 2.5 }
+        ],
+        order: 6
+      }
+    ]
+  },
   { q: "What is the average lookup time complexity of a hash table with good distribution?", a: "O(n)", b: "O(1)", c: "O(log n)", d: "O(n^2)", ans: "B", exp: "Hash tables map keys directly to array buckets in constant expected time." },
   { q: "Which data structure operates on a Last-In First-Out (LIFO) discipline?", a: "Queue", b: "Stack", c: "Binary Tree", d: "Linked List", ans: "B", exp: "Stacks push and pop elements from the same end, enforcing LIFO behavior." },
   { q: "What is the worst-case time complexity of QuickSort?", a: "O(n)", b: "O(n log n)", c: "O(n^2)", d: "O(1)", ans: "C", exp: "QuickSort degrades to quadratic time when pivots produce maximally unbalanced partitions." },

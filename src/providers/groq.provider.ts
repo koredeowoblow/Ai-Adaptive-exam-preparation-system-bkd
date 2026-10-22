@@ -402,6 +402,311 @@ Base the plan on the student's weakest areas and exam timeline urgency. Return O
       throw error;
     }
   }
+
+  async generateSocraticTutorResponse(
+    questionContext: {
+      questionText: string;
+      type?: string;
+      studentAnswer?: string;
+      correctAnswer?: string;
+      modelAnswer?: string;
+      rubric?: any;
+      feedback?: string;
+      marksAwarded?: number;
+      maxMarks?: number;
+    },
+    messages: { role: 'user' | 'assistant'; content: string }[]
+  ): Promise<string> {
+    try {
+      const contextPrompt = `You are a supportive, insightful Socratic academic tutor helping a university student review an exam question they just completed.
+
+QUESTION CONTEXT:
+Question: ${questionContext.questionText}
+Question Type: ${questionContext.type || 'Standard'}
+${questionContext.studentAnswer ? `Student's Submitted Answer: ${questionContext.studentAnswer}` : ''}
+${questionContext.correctAnswer ? `Correct Objective Answer: ${questionContext.correctAnswer}` : ''}
+${questionContext.modelAnswer ? `Instructor Model Answer: ${questionContext.modelAnswer}` : ''}
+${questionContext.marksAwarded !== undefined ? `Marks Awarded: ${questionContext.marksAwarded} / ${questionContext.maxMarks || 0}` : ''}
+${questionContext.feedback ? `Grading Feedback: ${questionContext.feedback}` : ''}
+
+TUTORING GUIDELINES:
+1. Adopt a friendly, encouraging, and pedagogically sound Socratic tone.
+2. Directly address the student's question, doubt, or request for clarification.
+3. If the student made a mistake, gently guide them to see where their reasoning broke down instead of merely repeating the correct answer.
+4. If they ask for formulas, derivations, or step-by-step logic, provide clean, concise breakdowns.
+5. Format your response in clean GitHub-flavored Markdown. Use LaTeX notation ($...$ or $$...$$) for mathematical expressions where appropriate. Keep answers focused and approachable.`;
+
+      const chatCompletion = await this.groq.chat.completions.create({
+        messages: [
+          { role: 'system', content: contextPrompt },
+          ...messages,
+        ],
+        model: 'qwen/qwen3.8-27b',
+        temperature: 0.5,
+        max_tokens: 1200,
+      });
+
+      return chatCompletion.choices[0]?.message?.content || 'I could not generate a response. Please ask your question again.';
+    } catch (error) {
+      console.error('Error generating Socratic tutor response:', error);
+      throw error;
+    }
+  }
+
+  async generateQuestionsFromNotes(
+    notesText: string,
+    options: {
+      topicName: string;
+      courseCode?: string;
+      questionType: 'MULTIPLE_CHOICE' | 'THEORY' | 'BOTH';
+      count: number;
+      difficulty: string;
+    }
+  ): Promise<any[]> {
+    try {
+      const count = Math.min(Math.max(options.count || 3, 1), 10);
+      const prompt = `You are an expert university professor creating rigorous examination questions based on lecture notes.
+
+COURSE/TOPIC:
+Course: ${options.courseCode || 'General'}
+Topic: ${options.topicName}
+Target Difficulty: ${options.difficulty} (Beginner, Intermediate, or Advanced)
+Question Type Requested: ${options.questionType}
+Number of Questions to Generate: ${count}
+
+SOURCE LECTURE / SYLLABUS NOTES:
+${notesText.slice(0, 4000)}
+
+INSTRUCTIONS:
+Generate ${count} high-quality university examination questions strictly based on the provided notes.
+Output MUST be valid JSON array with NO surrounding markdown or backticks.
+
+Schema for each question in the array:
+For MULTIPLE_CHOICE:
+{
+  "type": "MULTIPLE_CHOICE",
+  "questionText": "Clear, unambiguous question text",
+  "options": [
+    { "id": "A", "text": "Option A text" },
+    { "id": "B", "text": "Option B text" },
+    { "id": "C", "text": "Option C text" },
+    { "id": "D", "text": "Option D text" }
+  ],
+  "correctAnswer": "A",
+  "explanation": "Concise step-by-step explanation of why A is correct and why other options fail.",
+  "difficulty": 5, // integer 1-10
+  "eloRating": 1200
+}
+
+For THEORY (can be single-part or multi-part):
+{
+  "type": "THEORY",
+  "questionText": "Main problem statement or scenario",
+  "hasSubParts": true,
+  "subParts": [
+    {
+      "id": "part-1",
+      "label": "1(a)",
+      "prompt": "Specific task for part a",
+      "maxMarks": 4,
+      "modelAnswer": "Complete reference answer for part a",
+      "rubric": [
+        { "point": "Correct definition or formula stated", "weight": 2 },
+        { "point": "Accurate calculation or deduction", "weight": 2 }
+      ]
+    },
+    {
+      "id": "part-2",
+      "label": "1(b)",
+      "prompt": "Specific task for part b",
+      "maxMarks": 6,
+      "modelAnswer": "Complete reference answer for part b",
+      "rubric": [
+        { "point": "Clear logical derivation", "weight": 3 },
+        { "point": "Correct final conclusion or synthesis", "weight": 3 }
+      ]
+    }
+  ],
+  "difficulty": 6,
+  "eloRating": 1350
+}
+
+Return ONLY the raw JSON array.`;
+
+      const chatCompletion = await this.groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'qwen/qwen3.8-27b',
+        temperature: 0.4,
+        max_tokens: 3000,
+      });
+
+      const raw = chatCompletion.choices[0]?.message?.content?.trim() || '[]';
+      // Strip potential markdown code fences if model enclosed in ```json
+      const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
+      const parsed = JSON.parse(cleaned);
+      return Array.isArray(parsed) ? parsed : [parsed];
+    } catch (error) {
+      console.error('Groq generateTopicDiagnosticQuestions error:', error);
+      throw error;
+    }
+  }
+
+  async analyzeDistractorAndMisconception(payload: {
+    questionText: string;
+    options?: { id: string; text: string }[];
+    correctAnswer?: string;
+    studentAnswer: string;
+    modelAnswer?: string;
+    subPartLabel?: string;
+    explanation?: string;
+  }): Promise<{
+    misconceptionTitle: string;
+    whyDistractorTempting: string;
+    mentalModelFix: string;
+    correctiveMicroDrill: {
+      prompt: string;
+      options: { id: string; text: string }[];
+      correctOptionId: string;
+      explanation: string;
+    };
+  }> {
+    const isTheory = !payload.options || payload.options.length === 0;
+
+    const prompt = `
+You are an expert cognitive diagnostic and educational psychometrics engine for university examinations.
+A student gave an incorrect answer or lost marks on an exam question. Your goal is to perform an EXAM AUTOPSY: diagnose the exact cognitive misconception / trap, explain why their chosen answer seemed tempting, state the crystal-clear mental model correction rule, and create a single 60-second corrective micro-drill to verify they now understand.
+
+QUESTION CONTEXT:
+Question Text: ${payload.questionText}
+${payload.subPartLabel ? `Sub-part: ${payload.subPartLabel}` : ''}
+${isTheory ? `Model Answer / Rubric: ${payload.modelAnswer || payload.explanation || 'N/A'}` : `Options:\n${payload.options?.map(o => `${o.id}: ${o.text}`).join('\n')}\nCorrect Option: ${payload.correctAnswer}`}
+Student's Submitted Answer: ${payload.studentAnswer}
+
+Return a valid JSON object strictly matching this schema:
+{
+  "misconceptionTitle": "Short 3-8 word title naming the cognitive trap (e.g. 'Confused Upper-Bound with Lower-Bound', 'Omitted Carry Generate in CLA Logic')",
+  "whyDistractorTempting": "1-2 sentences explaining why a student who partially understands the topic would plausibly make this specific error.",
+  "mentalModelFix": "1-2 sentences providing the golden mnemonic rule or conceptual axiom to remember forever.",
+  "correctiveMicroDrill": {
+    "prompt": "A targeted 1-sentence micro-question testing whether the misconception was resolved.",
+    "options": [
+      { "id": "A", "text": "First option" },
+      { "id": "B", "text": "Second option" }
+    ],
+    "correctOptionId": "A",
+    "explanation": "Brief 1-sentence verification explanation."
+  }
+}
+
+Return ONLY the raw JSON object. Do not wrap in markdown or backticks.`;
+
+    try {
+      const chatCompletion = await this.groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'qwen/qwen3.8-27b',
+        temperature: 0.3,
+        max_tokens: 1000,
+      });
+
+      const raw = chatCompletion.choices[0]?.message?.content?.trim() || '{}';
+      const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```$/i, '').trim();
+      const parsed = JSON.parse(cleaned);
+
+      if (!parsed.misconceptionTitle || !parsed.correctiveMicroDrill) {
+        throw new Error('Incomplete diagnostic JSON returned from LLM');
+      }
+
+      return parsed;
+    } catch (error) {
+      console.warn('Groq distractor analysis failed or returned invalid JSON. Using heuristic fallback:', error);
+      // Robust heuristic autopsy fallback
+      return {
+        misconceptionTitle: isTheory ? 'Incomplete Conceptual Invariant' : 'Common Distractor Heuristic Trap',
+        whyDistractorTempting: `Your response was tempting because it shares surface-level terminology with the correct concept, but misses the core constraint.`,
+        mentalModelFix: `Always verify the boundary invariants and formal definitions before locking in your answer. Compare against: ${payload.modelAnswer || payload.correctAnswer || 'reference definition'}.`,
+        correctiveMicroDrill: {
+          prompt: `Which approach correctly addresses this concept without introducing boundary errors?`,
+          options: [
+            { id: 'A', text: `Apply the rigorous formal invariant: ${payload.modelAnswer ? payload.modelAnswer.slice(0, 50) + '...' : 'Correct target'}` },
+            { id: 'B', text: `Rely solely on intuitive surface-level pattern matching` }
+          ],
+          correctOptionId: 'A',
+          explanation: `Relying on formal invariants avoids common examiner distractor traps.`
+        }
+      };
+    }
+  }
+
+  async refineExplanation(payload: {
+    questionText: string;
+    studentAnswer?: string;
+    correctAnswer?: string;
+    modelAnswer?: string;
+    currentExplanation?: string;
+    style: 'ANALOGY' | 'STEP_BY_STEP' | 'SUMMARY' | 'CUSTOM';
+    customPrompt?: string;
+  }): Promise<{ refinedExplanation: string; title: string }> {
+    let promptInstruction = '';
+
+    switch (payload.style) {
+      case 'ANALOGY':
+        promptInstruction = `Explain this concept using a fun, simple, real-world everyday analogy that anyone could understand (like cooking, traffic, money, or games). Completely avoid academic jargon. Give clear, memorable intuition.`;
+        break;
+      case 'STEP_BY_STEP':
+        promptInstruction = `Provide a meticulous, numbered step-by-step breakdown of how to solve this exact problem from scratch. Show intermediate math calculations, logic derivations, and why each step follows from the previous one.`;
+        break;
+      case 'SUMMARY':
+        promptInstruction = `Provide an ultra-concise executive TL;DR summary in 2-3 crisp bullet points: 1) Core principle, 2) The exact mathematical/logic reason why the correct answer holds, 3) The single fatal flaw in the student's answer.`;
+        break;
+      case 'CUSTOM':
+        promptInstruction = `The student has this specific question or doubt: "${payload.customPrompt || 'Please explain more clearly'}". Address their exact question directly with clarity, patience, and precise examples.`;
+        break;
+    }
+
+    const prompt = `
+You are an expert, encouraging university tutor helping a student understand an exam question.
+
+QUESTION CONTEXT:
+Question: ${payload.questionText}
+${payload.correctAnswer ? `Correct Answer: ${payload.correctAnswer}` : ''}
+${payload.modelAnswer ? `Model Answer / Rubric: ${payload.modelAnswer}` : ''}
+${payload.studentAnswer ? `Student's Answer: ${payload.studentAnswer}` : ''}
+${payload.currentExplanation ? `Previous Explanation: ${payload.currentExplanation}` : ''}
+
+REQUESTED FORMAT:
+${promptInstruction}
+
+Write in clear, friendly, student-accessible language with clean markdown and LaTeX math ($...$ or $$...$$) where relevant. Do not include meta-chatter like "Sure, here is...". Dive straight into the explanation.`;
+
+    try {
+      const chatCompletion = await this.groq.chat.completions.create({
+        messages: [{ role: 'user', content: prompt }],
+        model: 'qwen/qwen3.8-27b',
+        temperature: 0.4,
+        max_tokens: 1200,
+      });
+
+      const refinedExplanation = chatCompletion.choices[0]?.message?.content?.trim() || '';
+      const titleMap = {
+        ANALOGY: 'Real-World Everyday Analogy',
+        STEP_BY_STEP: 'Step-by-Step Working & Math Breakdown',
+        SUMMARY: 'Key Takeaways & Core Principle',
+        CUSTOM: 'Personalized Answer to Your Question',
+      };
+
+      return {
+        title: titleMap[payload.style] || 'Refined Explanation',
+        refinedExplanation,
+      };
+    } catch (error) {
+      console.warn('Groq refineExplanation failed. Using fallback:', error);
+      return {
+        title: payload.style === 'ANALOGY' ? 'Simple Intuition' : 'Detailed Steps',
+        refinedExplanation: `**Core Rule**: Always solve this systematically by inspecting the formal constraint. Reference: ${payload.modelAnswer || payload.correctAnswer || 'See textbook solution'}.\n\n*Note: High server load fallback. Check again in a moment for full interactive generation.*`,
+      };
+    }
+  }
 }
 
 export const groqProvider = new GroqProvider();
+

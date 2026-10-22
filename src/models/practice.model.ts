@@ -39,7 +39,21 @@ const PracticeAnswerSchema = new Schema(
 
 const AntiCheatEventSchema = new Schema(
   {
-    type: { type: String, enum: ['TAB_SWITCH', 'PASTE_DETECTED', 'FAST_ANSWER', 'DEVTOOLS_DETECTED', 'RIGHT_CLICK_BLOCKED'], required: true },
+    type: { 
+      type: String, 
+      enum: [
+        'TAB_SWITCH', 
+        'PASTE_DETECTED', 
+        'FAST_ANSWER', 
+        'DEVTOOLS_DETECTED', 
+        'RIGHT_CLICK_BLOCKED', 
+        'MULTIPLE_VOICES_DETECTED',
+        'AI_PASTE_DETECTED',
+        'UNNATURAL_TYPING_VELOCITY',
+        'AI_HONEYPOT_TRIGGERED'
+      ], 
+      required: true 
+    },
     questionId: { type: Schema.Types.ObjectId, ref: 'Question' },
     timestamp: { type: Date, required: true },
     metadata: { type: Schema.Types.Mixed },
@@ -53,7 +67,7 @@ const PracticeSessionSchema = new Schema<IPracticeSessionDocument>(
     courseId: { type: Schema.Types.ObjectId, ref: 'Course', required: true },
     startedAt: { type: Date, default: Date.now },
     endedAt: { type: Date },
-    status: { type: String, enum: ['active', 'PENDING_GRADING', 'completed', 'FAILED'], default: 'active' },
+    status: { type: String, enum: ['active', 'PENDING_GRADING', 'completed', 'FAILED', 'TERMINATED_BY_PROCTOR'], default: 'active' },
     currentQuestionId: { type: Schema.Types.ObjectId, ref: 'Question' }, // Added for atomic state transition
     currentQuestionStartedAt: { type: Date }, // Added to track server-side elapsed time
     questionsServed: [PracticeAnswerSchema],
@@ -70,6 +84,9 @@ const PracticeSessionSchema = new Schema<IPracticeSessionDocument>(
     clampedMessage: { type: String }, // Populated when totalQuestions was clamped by the level cap
     isArchived: { type: Boolean, default: false },
     archivedAt: { type: Date },
+    proctorWarning: { type: String },
+    proctorWarningAt: { type: Date },
+    terminatedReason: { type: String },
   },
   {
     timestamps: true,

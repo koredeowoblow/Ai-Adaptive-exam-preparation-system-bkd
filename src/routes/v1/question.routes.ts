@@ -12,6 +12,7 @@ const router = Router();
 router.use(protect);
 
 router.post('/', authorize('question.create'), validateRequest(createQuestionSchema), asyncHandler(questionController.create));
+router.post('/ai-generate', authorize('question.create'), asyncHandler(questionController.generateWithAI));
 router.get('/', authorize('question.read'), asyncHandler(questionController.getAll));
 // Need a bulk schema in validator ideally, but simplified here
 router.post('/bulk', authorize('question.create'), asyncHandler(questionController.bulkCreate)); 

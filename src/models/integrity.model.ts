@@ -7,7 +7,11 @@ export type IntegrityEventType =
   | 'PASTE_ATTEMPT' 
   | 'CUT_ATTEMPT' 
   | 'MOUSE_LEAVE'
-  | 'CONTEXT_MENU';
+  | 'CONTEXT_MENU'
+  | 'MULTIPLE_VOICES_DETECTED'
+  | 'AI_PASTE_DETECTED'
+  | 'UNNATURAL_TYPING_VELOCITY'
+  | 'AI_HONEYPOT_TRIGGERED';
 
 export type IntegritySeverity = 'LOW' | 'MEDIUM' | 'HIGH';
 
@@ -36,7 +40,7 @@ const IntegrityLogSchema = new Schema<IIntegrityLog>(
     },
     eventType: {
       type: String,
-      enum: ['WINDOW_BLUR', 'VISIBILITY_CHANGE', 'COPY_ATTEMPT', 'PASTE_ATTEMPT', 'CUT_ATTEMPT', 'MOUSE_LEAVE', 'CONTEXT_MENU'],
+      enum: ['WINDOW_BLUR', 'VISIBILITY_CHANGE', 'COPY_ATTEMPT', 'PASTE_ATTEMPT', 'CUT_ATTEMPT', 'MOUSE_LEAVE', 'CONTEXT_MENU', 'MULTIPLE_VOICES_DETECTED'],
       required: true,
     },
     severity: {

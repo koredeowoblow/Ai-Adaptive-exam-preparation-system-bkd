@@ -1,6 +1,89 @@
 import { SeedQuestion } from "./lasustech-data";
+import { SeedDiagrams } from "./seed-diagrams";
 
 export const csc301ExpandedQuestions: SeedQuestion[] = [
+  {
+    q: "Examine the classical 5-stage RISC instruction pipeline and data forwarding path depicted in Figure 3.1.",
+    exp: "Comprehensive computer architecture analysis of a 5-stage RISC CPU pipeline covering hazard detection, data forwarding, branch prediction, and throughput speedup.",
+    type: "THEORY",
+    diagramUrl: SeedDiagrams.cpuPipeline,
+    diagramCaption: "Figure 3.1: Classical 5-Stage RISC Instruction Pipeline Architecture",
+    hasSubParts: true,
+    subParts: [
+      {
+        id: "part-pipe-1a",
+        label: "1(a)",
+        prompt: "Name each of the 5 pipeline stages and define the exact computational task executed in each stage.",
+        maxMarks: 5,
+        modelAnswer: "1) IF (Instruction Fetch): Retrieves instruction from instruction cache/RAM using Program Counter (PC). 2) ID (Instruction Decode / Register Read): Decodes opcode in control unit and reads source registers from Register File. 3) EX (Execute / ALU): Computes ALU arithmetic/logic or memory target effective address. 4) MEM (Memory Access): Performs read/write access to data cache for load/store instructions. 5) WB (Write Back): Writes computed result or loaded data back into the destination register in the Register File.",
+        rubric: [
+          { point: "All 5 stages correctly enumerated (IF, ID, EX, MEM, WB)", weight: 2.5 },
+          { point: "Accurate description of operational task executed within each stage", weight: 2.5 }
+        ],
+        order: 1
+      },
+      {
+        id: "part-pipe-1a-i",
+        label: "1(a)(i)",
+        prompt: "Distinguish between Structural Hazards, Data Hazards (RAW, WAR, WAW), and Control Hazards in pipelined execution.",
+        maxMarks: 4,
+        modelAnswer: "Structural Hazards occur when hardware resources cannot support all concurrent stage combinations (e.g. single-ported memory accessed by both IF and MEM). Data Hazards occur when an instruction depends on the result of an antecedent instruction still in flight (Read-After-Write, Write-After-Read, Write-After-Write). Control Hazards arise from pipelining branch and jump instructions where the target PC is not determined until decode or execute.",
+        rubric: [
+          { point: "Accurate definitions of Structural, Data, and Control hazards", weight: 2 },
+          { point: "Distinction of RAW, WAR, and WAW data hazard dependencies", weight: 2 }
+        ],
+        order: 2
+      },
+      {
+        id: "part-pipe-1a-ii",
+        label: "1(a)(ii)",
+        prompt: "Explain how the MEM -> EX data forwarding bypass illustrated in the diagram resolves a Read-After-Write (RAW) data hazard without inserting pipeline stall bubbles.",
+        maxMarks: 4,
+        modelAnswer: "In a standard pipeline, the result of an ALU instruction is computed in EX and written to the register file during WB (stage 5). A succeeding instruction needing this value in EX (stage 3) would ordinarily stall for 2 cycles. The MEM -> EX forwarding multiplexer extracts the result directly from the EX/MEM pipeline register and feeds it back into the ALU input multiplexer at the start of EX, allowing back-to-back execution with zero stall bubbles.",
+        rubric: [
+          { point: "Explanation of ALU result availability in pipeline register before WB", weight: 2 },
+          { point: "Mechanism of forwarding multiplexers routing data directly into EX ALU inputs", weight: 2 }
+        ],
+        order: 3
+      },
+      {
+        id: "part-pipe-1a-iii",
+        label: "1(a)(iii)",
+        prompt: "Describe the Load-Use Data Hazard and explain why forwarding alone cannot eliminate a stall when an instruction immediately uses the result of a preceding LOAD instruction.",
+        maxMarks: 4,
+        modelAnswer: "In a LOAD instruction, data is not retrieved from the data cache until the end of the MEM stage (stage 4). If the immediately subsequent instruction requires this data in EX (stage 3), the required data does not physically exist in time (it would require forwarding backward in time). Therefore, the Hazard Detection Unit must insert one pipeline stall bubble (NOP) and freeze the PC/IF/ID stages, after which forwarding from MEM/WB can supply the operand.",
+        rubric: [
+          { point: "Data availability timing: Load data only arrives at end of MEM stage", weight: 2 },
+          { point: "Necessity of inserting one hardware stall cycle / bubble before forwarding", weight: 2 }
+        ],
+        order: 4
+      },
+      {
+        id: "part-pipe-1b-i",
+        label: "1(b)(i)",
+        prompt: "Calculate the theoretical speedup of an ideal 5-stage pipeline executing 1,000 instructions compared to a non-pipelined processor, assuming equal clock cycle duration.",
+        maxMarks: 4,
+        modelAnswer: "Non-pipelined execution takes T_nonpipe = 1000 * 5 cycles = 5,000 cycles. An ideal 5-stage pipeline takes T_pipe = k + (N - 1) = 5 + 999 = 1,004 cycles. Theoretical Speedup S = 5,000 / 1,004 ≈ 4.98x (approaching the theoretical maximum k = 5x).",
+        rubric: [
+          { point: "Correct formulas for non-pipelined cycles and pipelined cycles k + N - 1", weight: 2 },
+          { point: "Accurate speedup calculation of approximately 4.98x", weight: 2 }
+        ],
+        order: 5
+      },
+      {
+        id: "part-pipe-1b-ii",
+        label: "1(b)(ii)",
+        prompt: "Discuss modern dynamic branch prediction techniques (2-bit saturating counter and Branch Target Buffers) used to mitigate control hazard stalls during conditional jumps.",
+        maxMarks: 4,
+        modelAnswer: "A 2-bit saturating counter state machine (Strongly Not Taken, Weakly Not Taken, Weakly Taken, Strongly Taken) requires two consecutive mispredictions to flip the prediction direction, preventing loop exit penalties from polluting predictions. A Branch Target Buffer (BTB) caches the target jump address indexed by instruction PC, allowing the pipeline to fetch target instructions in the very next cycle without waiting for branch decode.",
+        rubric: [
+          { point: "Operation of 2-bit saturating counter and hysteresis benefit", weight: 2 },
+          { point: "Role of Branch Target Buffer (BTB) in zero-cycle target address retrieval", weight: 2 }
+        ],
+        order: 6
+      }
+    ]
+  },
   { q: "What is the primary difference between a process and a thread in modern operating systems?", a: "Threads cannot execute code concurrently", b: "A process has its own address space, while threads of the same process share an address space", c: "Processes do not require CPU scheduling", d: "Threads have isolated file descriptors", ans: "B", exp: "Processes have independent virtual address spaces and resources, whereas threads share the process's code, data, and heap but retain independent stacks and registers." },
   { q: "Which CPU scheduling algorithm gives the lowest average waiting time for a given set of processes?", a: "First-Come First-Served (FCFS)", b: "Shortest Job First (SJF)", c: "Round Robin (RR)", d: "Priority Scheduling", ans: "B", exp: "Shortest Job First is provably optimal in terms of minimizing average waiting time." },
   { q: "What problem can occur in Priority Scheduling where low-priority processes wait indefinitely?", a: "Thrashing", b: "Starvation (indefinite blocking)", c: "Deadlock", d: "Belady's Anomaly", ans: "B", exp: "Starvation occurs when ready low-priority processes are continuously preempted by incoming higher-priority processes. Aging solves this." },
@@ -44,6 +127,89 @@ export const csc301ExpandedQuestions: SeedQuestion[] = [
 ];
 
 export const csc303ExpandedQuestions: SeedQuestion[] = [
+  {
+    q: "Figure 2.1 illustrates the conceptual Entity-Relationship Diagram (ERD) for a university academic portal managing students, departments, courses, and examination enrollments.",
+    exp: "Comprehensive database design analysis of a relational schema covering 3NF/BCNF normalization, primary/foreign key constraints, SQL aggregation queries, and index optimization.",
+    type: "THEORY",
+    diagramUrl: SeedDiagrams.relationalErd,
+    diagramCaption: "Figure 2.1: Relational Database Entity Relationship Diagram (ERD)",
+    hasSubParts: true,
+    subParts: [
+      {
+        id: "part-erd-2a",
+        label: "2(a)",
+        prompt: "Define Third Normal Form (3NF) and Boyce-Codd Normal Form (BCNF). Explain why associative entities like ENROLLMENT are essential when resolving many-to-many relationships.",
+        maxMarks: 4,
+        modelAnswer: "A relation is in 3NF if it is in 2NF and no non-prime attribute is transitively dependent on any candidate key (for every X -> Y, either X is a superkey or Y is prime). BCNF is stricter: for every non-trivial functional dependency X -> Y, X must be a superkey. Associative tables resolve many-to-many relationships into two 1:N relationships, preventing duplicate data and update anomalies.",
+        rubric: [
+          { point: "Precise definitions of 3NF and BCNF transitive/superkey criteria", weight: 2 },
+          { point: "Role of associative entities in resolving M:N cardinalities", weight: 2 }
+        ],
+        order: 1
+      },
+      {
+        id: "part-erd-2a-i",
+        label: "2(a)(i)",
+        prompt: "Identify all primary keys, candidate keys, and foreign keys in the ENROLLMENT entity from the ERD.",
+        maxMarks: 3,
+        modelAnswer: "Primary Key: enrollment_id (surrogate key). Candidate Key: Composite key (student_id, course_id, semester). Foreign Keys: student_id references STUDENT(student_id); course_id references COURSE(course_id).",
+        rubric: [
+          { point: "Correct identification of primary key enrollment_id", weight: 1 },
+          { point: "Correct identification of foreign keys student_id and course_id", weight: 2 }
+        ],
+        order: 2
+      },
+      {
+        id: "part-erd-2a-ii",
+        label: "2(a)(ii)",
+        prompt: "Explain the referential integrity behavior of ON DELETE CASCADE versus ON DELETE RESTRICT for the foreign key link between DEPARTMENT and STUDENT.",
+        maxMarks: 4,
+        modelAnswer: "ON DELETE RESTRICT aborts and rejects any attempt to delete a DEPARTMENT record if any STUDENT tuple references its dept_id, protecting against accidental student data loss. ON DELETE CASCADE automatically deletes all associated STUDENT records (and subsequently their enrollments) when the parent DEPARTMENT is removed.",
+        rubric: [
+          { point: "Clear explanation of ON DELETE RESTRICT blocking deletion", weight: 2 },
+          { point: "Clear explanation of ON DELETE CASCADE propagating deletion", weight: 2 }
+        ],
+        order: 3
+      },
+      {
+        id: "part-erd-2a-iii",
+        label: "2(a)(iii)",
+        prompt: "Analyze potential update, insertion, and deletion anomalies if the attributes from COURSE were denormalized and merged directly into the STUDENT table.",
+        maxMarks: 4,
+        modelAnswer: "1) Insertion anomaly: Cannot store a newly created course without registering at least one student in it. 2) Deletion anomaly: Deleting the sole student enrolled in a course permanently destroys the course's metadata. 3) Update anomaly: Changing credit units for a course requires updating every enrolled student row, risking data inconsistency.",
+        rubric: [
+          { point: "Identification of insertion anomaly regarding unassigned courses", weight: 1.5 },
+          { point: "Identification of deletion and update inconsistency anomalies", weight: 2.5 }
+        ],
+        order: 4
+      },
+      {
+        id: "part-erd-2b-i",
+        label: "2(b)(i)",
+        prompt: "Write an ANSI SQL query calculating the Cumulative Grade Point Average (CGPA) for every student in the 'Computer Science' department who has completed at least 5 courses.",
+        maxMarks: 5,
+        modelAnswer: "SELECT s.student_id, s.matric_no, s.full_name, ROUND(SUM(e.grade_point * c.credit_units) / SUM(c.credit_units), 2) AS cgpa FROM STUDENT s JOIN DEPARTMENT d ON s.dept_id = d.dept_id JOIN ENROLLMENT e ON s.student_id = e.student_id JOIN COURSE c ON e.course_id = c.course_id WHERE d.dept_name = 'Computer Science' GROUP BY s.student_id, s.matric_no, s.full_name HAVING COUNT(e.course_id) >= 5 ORDER BY cgpa DESC;",
+        rubric: [
+          { point: "Correct multi-table JOINs linking STUDENT, DEPARTMENT, ENROLLMENT, COURSE", weight: 2 },
+          { point: "Accurate weighted CGPA formula SUM(points*units)/SUM(units)", weight: 1.5 },
+          { point: "Proper GROUP BY and HAVING COUNT() >= 5 condition", weight: 1.5 }
+        ],
+        order: 5
+      },
+      {
+        id: "part-erd-2b-ii",
+        label: "2(b)(ii)",
+        prompt: "Design a composite indexing strategy to optimize the query execution plan for the above query on a database containing 2 million enrollment tuples.",
+        maxMarks: 4,
+        modelAnswer: "1) Composite index on ENROLLMENT(student_id, course_id) INCLUDE (grade_point) to allow index-only access. 2) Index on DEPARTMENT(dept_name) to instantly retrieve the CS dept_id. 3) Index on STUDENT(dept_id, student_id) to rapidly filter CS students. 4) Clustered primary key index on COURSE(course_id).",
+        rubric: [
+          { point: "Creation of covering composite index on ENROLLMENT", weight: 2 },
+          { point: "Index on filter columns DEPARTMENT(dept_name) and foreign keys", weight: 2 }
+        ],
+        order: 6
+      }
+    ]
+  },
   { q: "What does ACID stand for in database transaction management?", a: "Accuracy, Consistency, Integrity, Durability", b: "Atomicity, Consistency, Isolation, Durability", c: "Aggregation, Concurrency, Indexing, Distribution", d: "Availability, Correctness, Isolation, Durability", ans: "B", exp: "ACID represents the core transactional guarantees: Atomicity (all-or-nothing), Consistency (state validity), Isolation (concurrency control), and Durability (permanence)." },
   { q: "Which SQL clause is used to filter records resulting from an aggregate GROUP BY operation?", a: "WHERE", b: "HAVING", c: "ORDER BY", d: "LIMIT", ans: "B", exp: "WHERE filters individual rows prior to grouping, whereas HAVING filters aggregated groups after aggregation." },
   { q: "What normal form requires eliminating partial functional dependencies on a composite primary key?", a: "First Normal Form (1NF)", b: "Second Normal Form (2NF)", c: "Third Normal Form (3NF)", d: "Boyce-Codd Normal Form (BCNF)", ans: "B", exp: "2NF requires 1NF compliance and that every non-prime attribute is fully functionally dependent on the entire candidate key." },

@@ -22,6 +22,7 @@ import { cacheService } from "../utils/cache";
 import { redisClient } from "../config/redis";
 import { lasustechSeedData } from "./lasustech-data";
 import { getExpandedQuestionsForCourse } from "./seed-expansions";
+import { SeedDiagrams } from "./seed-diagrams";
 
 // Mock Express Request and Response
 const mockReq = (user: any, body: any = {}, params: any = {}): any => ({
@@ -215,7 +216,8 @@ export async function seed() {
         logger.info(`Seeding ${questionsToSeed.length} unique questions for ${course.title}...`);
         for (let i = 0; i < questionsToSeed.length; i++) {
           const qTemplate = questionsToSeed[i];
-          const isTheory = !qTemplate.a || i % 4 === 3; // Theory template or 1 out of 4
+          const isExplicitTheory = qTemplate.type === "THEORY" || qTemplate.hasSubParts;
+          const isTheory = isExplicitTheory || !qTemplate.a || i % 4 === 3; // Theory template or 1 out of 4
           const qRes = new MockRes();
           const questionData: any = {
             topicId: topic._id,
@@ -224,54 +226,232 @@ export async function seed() {
             explanationSource: "manual",
             eloRating: 1000 + Math.floor(Math.random() * 800), // Random elo 1000-1800
             createdBy: adminActor.id,
+            diagramUrl: qTemplate.diagramUrl,
+            diagramCaption: qTemplate.diagramCaption,
           };
 
           if (isTheory) {
             questionData.type = "THEORY";
-            if (i % 8 === 7) {
+            if (qTemplate.hasSubParts && qTemplate.subParts && qTemplate.subParts.length > 0) {
               questionData.hasSubParts = true;
-              questionData.subParts = [
-                {
-                  id: "a",
-                  label: "1(a)",
-                  prompt: `State the theoretical principles and core mathematical definition of ${qTemplate.q.replace(/\?$/, '')}.`,
-                  maxMarks: 4,
-                  modelAnswer: `Fundamental definitions and properties: ${qTemplate.exp}`,
-                  rubric: [
-                    { point: "Accurate statement of definition and core theory", weight: 2 },
-                    { point: "Mathematical or algorithmic formulation", weight: 2 }
-                  ],
-                  order: 1
-                },
-                {
-                  id: "b_i",
-                  label: "1(b)(i)",
-                  prompt: `Analyze a practical implementation scenario and evaluate performance implications or trade-offs.`,
-                  maxMarks: 3,
-                  modelAnswer: `Practical implementation analysis: ${qTemplate.exp}`,
-                  rubric: [
-                    { point: "Correct scenario application", weight: 1.5 },
-                    { point: "Evaluation of engineering trade-offs", weight: 1.5 }
-                  ],
-                  order: 2
-                },
-                {
-                  id: "b_ii",
-                  label: "1(b)(ii)",
-                  prompt: `Formulate an optimization or mitigation strategy for potential edge cases or failure modes.`,
-                  maxMarks: 3,
-                  modelAnswer: `Robust mitigation strategy based on: ${qTemplate.exp}`,
-                  rubric: [
-                    { point: "Feasible optimization strategy", weight: 1.5 },
-                    { point: "Edge-case handling and recovery mechanism", weight: 1.5 }
-                  ],
-                  order: 3
-                }
-              ];
+              questionData.subParts = qTemplate.subParts;
+              questionData.diagramUrl = qTemplate.diagramUrl || questionData.diagramUrl;
+              questionData.diagramCaption = qTemplate.diagramCaption || questionData.diagramCaption;
+            } else if (i % 4 === 3) {
+              questionData.hasSubParts = true;
+              const concept = qTemplate.q.replace(/^(Regarding|True or False|\(?Theory Analysis[^\]]*\)?|\s*\[[^\]]+\])\s*/i, '').replace(/\?$/, '').trim();
+
+              if (i % 8 === 3) {
+                // Style 1: 1a, ai, aii, aiii, 1b, bi, bii, 1c with diagram
+                questionData.diagramUrl = questionData.diagramUrl || SeedDiagrams.fullAdderCircuit;
+                questionData.diagramCaption = questionData.diagramCaption || `Figure 1.1: Functional schematic and system architecture for ${concept.slice(0, 45)}`;
+                questionData.subParts = [
+                  {
+                    id: "part-1a",
+                    label: "1a",
+                    prompt: `State the theoretical principles, operational axioms, and mathematical foundations of ${concept}.`,
+                    maxMarks: 4,
+                    modelAnswer: `Fundamental definition and properties: ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Accurate statement of core definition and axioms", weight: 2 },
+                      { point: "Mathematical and theoretical formulation", weight: 2 }
+                    ],
+                    order: 1
+                  },
+                  {
+                    id: "part-ai",
+                    label: "ai",
+                    prompt: `Derive the governing equations and evaluate how intermediate state transitions affect performance under nominal conditions.`,
+                    maxMarks: 3,
+                    modelAnswer: `Step-by-step derivation: Operating characteristics derive directly from ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Proper derivation steps and algebraic formulations", weight: 1.5 },
+                      { point: "Evaluation of nominal operating conditions", weight: 1.5 }
+                    ],
+                    order: 2
+                  },
+                  {
+                    id: "part-aii",
+                    label: "aii",
+                    prompt: `Identify the critical path latency and compute the asymptotic time/resource bounds for this system.`,
+                    maxMarks: 3,
+                    modelAnswer: `Asymptotic complexity analysis: Resource bounds conform to standard theoretical constraints established in: ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Correct asymptotic bounds specification", weight: 1.5 },
+                      { point: "Justification of critical path latency", weight: 1.5 }
+                    ],
+                    order: 3
+                  },
+                  {
+                    id: "part-aiii",
+                    label: "aiii",
+                    prompt: `Analyze failure modes, race conditions, or edge cases that arise when boundary inputs are supplied.`,
+                    maxMarks: 4,
+                    modelAnswer: `Edge-case analysis: When boundary extremes occur, safety invariants must be preserved as detailed in: ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Identification of boundary condition edge cases", weight: 2 },
+                      { point: "Analysis of system stability and recovery", weight: 2 }
+                    ],
+                    order: 4
+                  },
+                  {
+                    id: "part-1b",
+                    label: "1b",
+                    prompt: `Refer to the provided schematic diagram. Discuss how the internal subsystem interconnects coordinate execution.`,
+                    diagramUrl: SeedDiagrams.timingWaveform,
+                    diagramCaption: `Figure 1.2: Waveform propagation and timing characteristics`,
+                    maxMarks: 4,
+                    modelAnswer: `Architectural coordination: Interconnect signals synchronize data flow between functional stages: ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Interpretation of schematic subsystem connections", weight: 2 },
+                      { point: "Correlation between diagram components and runtime behavior", weight: 2 }
+                    ],
+                    order: 5
+                  },
+                  {
+                    id: "part-bi",
+                    label: "bi",
+                    prompt: `Formulate a practical implementation optimization to reduce computational or memory overhead by at least 25%.`,
+                    maxMarks: 4,
+                    modelAnswer: `Optimization strategy: Implementing pipelined caching or pruned representation based on: ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Sound technical optimization mechanism", weight: 2 },
+                      { point: "Quantifiable reduction in computational or space overhead", weight: 2 }
+                    ],
+                    order: 6
+                  },
+                  {
+                    id: "part-bii",
+                    label: "bii",
+                    prompt: `Propose an error detection and mitigation scheme to maintain integrity across high-concurrency workloads.`,
+                    maxMarks: 4,
+                    modelAnswer: `Concurrency mitigation: Transactional locks, idempotent tokens, or atomic compare-and-swap primitives guarantee consistency.`,
+                    rubric: [
+                      { point: "Feasible fault-tolerant mitigation design", weight: 2 },
+                      { point: "Guarantees under high concurrency or packet loss", weight: 2 }
+                    ],
+                    order: 7
+                  },
+                  {
+                    id: "part-1c",
+                    label: "1c",
+                    prompt: `Synthesize industrial best practices and modern architectural trade-offs when deploying this solution at scale.`,
+                    maxMarks: 4,
+                    modelAnswer: `Industrial synthesis: Distributed scalability requires horizontal partitioning, telemetry logging, and automated failover.`,
+                    rubric: [
+                      { point: "Articulation of real-world scalability trade-offs", weight: 2 },
+                      { point: "Comprehensive conclusion adhering to engineering standards", weight: 2 }
+                    ],
+                    order: 8
+                  }
+                ];
+              } else {
+                // Style 2: 1(a), 1(a)(i), 1(a)(ii), 1(a)(iii), 1(b)(i), 1(b)(ii), 1(b)(iii), 1(c) with diagram
+                questionData.diagramUrl = questionData.diagramUrl || SeedDiagrams.cpuPipeline;
+                questionData.diagramCaption = questionData.diagramCaption || `Figure 2.1: Structural topology and data flow pipeline for ${concept.slice(0, 45)}`;
+                questionData.subParts = [
+                  {
+                    id: "part-1a",
+                    label: "1(a)",
+                    prompt: `Provide a rigorous theoretical overview and state the primary operational taxonomy of ${concept}.`,
+                    maxMarks: 4,
+                    modelAnswer: `Taxonomy and definition: ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Comprehensive theoretical overview", weight: 2 },
+                      { point: "Correct taxonomic classification and terminology", weight: 2 }
+                    ],
+                    order: 1
+                  },
+                  {
+                    id: "part-1a-i",
+                    label: "1(a)(i)",
+                    prompt: `Formulate the mathematical or formal logic relations governing state changes in this model.`,
+                    maxMarks: 3,
+                    modelAnswer: `Formal state model: Based on ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Formal mathematical or logic notation", weight: 1.5 },
+                      { point: "Accurate state transition rules", weight: 1.5 }
+                    ],
+                    order: 2
+                  },
+                  {
+                    id: "part-1a-ii",
+                    label: "1(a)(ii)",
+                    prompt: `Evaluate algorithmic complexity and memory utilization under worst-case input permutations.`,
+                    maxMarks: 3,
+                    modelAnswer: `Worst-case complexity: Evaluated from foundational theorems in ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Accurate worst-case Big-O time complexity", weight: 1.5 },
+                      { point: "Memory footprint and space bounds analysis", weight: 1.5 }
+                    ],
+                    order: 3
+                  },
+                  {
+                    id: "part-1a-iii",
+                    label: "1(a)(iii)",
+                    prompt: `Identify key failure conditions or data inconsistencies that occur if synchronization invariants are violated.`,
+                    maxMarks: 4,
+                    modelAnswer: `Invariant violations: Race conditions or deadlock emerge if mutual exclusion or atomic commit fails: ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Accurate identification of synchronization breakdown", weight: 2 },
+                      { point: "Impact on data integrity and consistency", weight: 2 }
+                    ],
+                    order: 4
+                  },
+                  {
+                    id: "part-1b-i",
+                    label: "1(b)(i)",
+                    prompt: `Refer to the pipeline and architecture diagram. Trace how an incoming data token progresses through each sequential stage.`,
+                    maxMarks: 4,
+                    modelAnswer: `Pipeline trace: The token is fetched, decoded, executed, checked against memory, and retired according to the stage flow.`,
+                    rubric: [
+                      { point: "Clear stage-by-stage data traversal explanation", weight: 2 },
+                      { point: "Reference to architectural diagram components", weight: 2 }
+                    ],
+                    order: 5
+                  },
+                  {
+                    id: "part-1b-ii",
+                    label: "1(b)(ii)",
+                    prompt: `Propose an architectural refactoring to eliminate pipeline stall bubbles or structural bottlenecks.`,
+                    maxMarks: 4,
+                    modelAnswer: `Bypass forwarding or multi-port buffering eliminates stalls: ${qTemplate.exp}`,
+                    rubric: [
+                      { point: "Viable architectural refactoring solution", weight: 2 },
+                      { point: "Elimination of stall cycles or resource contention", weight: 2 }
+                    ],
+                    order: 6
+                  },
+                  {
+                    id: "part-1b-iii",
+                    label: "1(b)(iii)",
+                    prompt: `Evaluate the trade-off between increased hardware complexity (area and power) versus execution speedup.`,
+                    maxMarks: 4,
+                    modelAnswer: `Cost-benefit evaluation: Additional bypass multiplexers increase silicon area and dynamic power consumption, which must be offset by sustained throughput gains.`,
+                    rubric: [
+                      { point: "Sound analysis of hardware area/power costs", weight: 2 },
+                      { point: "Quantitative or qualitative throughput justification", weight: 2 }
+                    ],
+                    order: 7
+                  },
+                  {
+                    id: "part-1c",
+                    label: "1c",
+                    prompt: `Summarize the broader impact of this technological design in modern distributed or mission-critical computing environments.`,
+                    maxMarks: 4,
+                    modelAnswer: `Broader synthesis: Provides the foundational reliability and low-latency response required in cloud computing and enterprise applications.`,
+                    rubric: [
+                      { point: "Contextualization within distributed/enterprise computing", weight: 2 },
+                      { point: "Clear synthesis and concluding evaluation", weight: 2 }
+                    ],
+                    order: 8
+                  }
+                ];
+              }
             } else {
               questionData.hasSubParts = false;
-              questionData.modelAnswer = "This is a detailed model answer for the concept: " + qTemplate.exp;
-              questionData.rubric = [
+              questionData.modelAnswer = qTemplate.modelAnswer || ("This is a detailed model answer for the concept: " + qTemplate.exp);
+              questionData.rubric = qTemplate.rubric || [
                 { point: "Identifies core concept", weight: 0.5 },
                 { point: "Provides accurate reasoning", weight: 0.5 }
               ];

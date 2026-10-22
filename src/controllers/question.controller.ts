@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { questionService } from '../services/question.service';
+import { groqProvider } from '../providers/groq.provider';
 import { sendResponse } from '../utils/sendResponse';
 
 export class QuestionController {
@@ -67,6 +68,31 @@ export class QuestionController {
   bulkCreate = async (req: Request, res: Response) => {
     const questions = await questionService.bulkCreateQuestions(req.body.questions);
     return sendResponse(res, 201, 'Questions created successfully', questions);
+  };
+
+  /**
+   * POST /api/v1/questions/ai-generate
+   * Generates examination questions from syllabus notes or lecture texts using AI.
+   */
+  generateWithAI = async (req: Request, res: Response) => {
+    const { notesText, topicId, topicName, courseCode, questionType, count, difficulty } = req.body;
+    if (!notesText || !notesText.trim()) {
+      return sendResponse(res, 400, 'notesText is required to generate questions');
+    }
+    const questions = await groqProvider.generateQuestionsFromNotes(notesText, {
+      topicName: topicName || 'Course Topic',
+      courseCode,
+      questionType: questionType || 'MULTIPLE_CHOICE',
+      count: parseInt(count, 10) || 3,
+      difficulty: difficulty || 'Intermediate',
+    });
+
+    const populated = questions.map((q: any) => ({
+      ...q,
+      ...(topicId ? { topicId } : {}),
+    }));
+
+    return sendResponse(res, 200, 'Questions generated successfully', populated);
   };
 }
 

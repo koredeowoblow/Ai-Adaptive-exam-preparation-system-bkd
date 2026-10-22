@@ -58,6 +58,73 @@ export class AIController {
     }
     return sendResponse(res, 200, 'Study plan generated', { plan });
   };
+
+  /**
+   * POST /api/v1/ai/tutor-question
+   * Socratic interactive chat focused on a specific completed question.
+   */
+  socraticTutorChat = async (req: Request, res: Response) => {
+    const { questionContext, messages } = req.body;
+
+    if (!questionContext || !questionContext.questionText) {
+      return sendResponse(res, 400, 'questionContext with questionText is required');
+    }
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      return sendResponse(res, 400, 'messages array is required');
+    }
+
+    const reply = await groqProvider.generateSocraticTutorResponse(questionContext, messages);
+    return sendResponse(res, 200, 'Socratic tutor response generated', { reply });
+  };
+
+  /**
+   * POST /api/v1/ai/distractor-analysis
+   * Cognitive diagnostic engine performing exam autopsy on incorrect answers.
+   */
+  analyzeDistractor = async (req: Request, res: Response) => {
+    const { questionText, options, correctAnswer, studentAnswer, modelAnswer, subPartLabel, explanation } = req.body;
+
+    if (!questionText || !studentAnswer) {
+      return sendResponse(res, 400, 'questionText and studentAnswer are required');
+    }
+
+    const diagnostic = await groqProvider.analyzeDistractorAndMisconception({
+      questionText,
+      options,
+      correctAnswer,
+      studentAnswer,
+      modelAnswer,
+      subPartLabel,
+      explanation,
+    });
+
+    return sendResponse(res, 200, 'Distractor diagnostic completed', diagnostic);
+  };
+
+  /**
+   * POST /api/v1/ai/refine-explanation
+   * Refines or simplifies an explanation using analogies, step-by-step logic, or student queries.
+   */
+  refineExplanation = async (req: Request, res: Response) => {
+    const { questionText, studentAnswer, correctAnswer, modelAnswer, currentExplanation, style, customPrompt } = req.body;
+
+    if (!questionText || !style) {
+      return sendResponse(res, 400, 'questionText and style are required');
+    }
+
+    const result = await groqProvider.refineExplanation({
+      questionText,
+      studentAnswer,
+      correctAnswer,
+      modelAnswer,
+      currentExplanation,
+      style,
+      customPrompt,
+    });
+
+    return sendResponse(res, 200, 'Explanation refined successfully', result);
+  };
 }
 
 export const aiController = new AIController();

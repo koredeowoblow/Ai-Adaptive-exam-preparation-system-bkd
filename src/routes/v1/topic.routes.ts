@@ -16,7 +16,7 @@ router.post('/', authorize('topic.create'), validateRequest(createTopicSchema), 
 router.get('/', asyncHandler(topicController.getAll));
 router.get('/course/:courseId', asyncHandler(topicController.getByCourse));
 router.get('/:id', asyncHandler(topicController.getById));
-router.get('/:topicId/questions', asyncHandler(questionController.getByTopic));
+router.get('/:topicId/questions', authorize('question.read'), asyncHandler(questionController.getByTopic));
 router.put('/:id', authorize('topic.update'), validateRequest(updateTopicSchema), asyncHandler(topicController.update));
 router.delete('/:id', authorize('topic.delete'), asyncHandler(topicController.delete));
 

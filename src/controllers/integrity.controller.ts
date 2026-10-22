@@ -54,6 +54,38 @@ export class IntegrityController {
     });
     return sendResponse(res, 200, 'Integrity violation logs retrieved successfully', result);
   };
+
+  /**
+   * GET /api/v1/integrity/live-sessions
+   * Live proctoring monitor feed of all active test sessions.
+   */
+  getLiveSessions = async (req: Request, res: Response) => {
+    const liveSessions = await integrityService.getLiveSessions();
+    return sendResponse(res, 200, 'Live proctoring sessions retrieved successfully', liveSessions);
+  };
+
+  /**
+   * POST /api/v1/integrity/session/:sessionId/warn
+   * Invigilator sends a direct warning message to student's screen.
+   */
+  sendWarning = async (req: Request, res: Response) => {
+    const { message } = req.body;
+    if (!message || !message.trim()) {
+      return sendResponse(res, 400, 'Warning message text is required');
+    }
+    const session = await integrityService.sendProctorWarning(req.params.sessionId as string, message);
+    return sendResponse(res, 200, 'Proctor warning transmitted successfully', session);
+  };
+
+  /**
+   * POST /api/v1/integrity/session/:sessionId/terminate
+   * Invigilator forcibly terminates a compromised exam.
+   */
+  terminateSession = async (req: Request, res: Response) => {
+    const { reason } = req.body;
+    const session = await integrityService.terminateSession(req.params.sessionId as string, reason);
+    return sendResponse(res, 200, 'Exam session terminated by proctor', session);
+  };
 }
 
 export const integrityController = new IntegrityController();

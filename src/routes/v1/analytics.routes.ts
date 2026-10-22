@@ -11,6 +11,8 @@ const router = Router();
 router.use(protect);
 
 router.get('/me', asyncHandler(analyticsController.getStudentAnalytics));
+router.get('/cohort-benchmark', asyncHandler(analyticsController.getCohortBenchmark));
+router.get('/cohort-benchmark/:studentId', authorize('analytics.read.platform'), asyncHandler(analyticsController.getCohortBenchmark));
 router.get('/student/:studentId', authorize('analytics.read.platform'), asyncHandler(analyticsController.getStudentAnalytics));
 router.get('/platform', authorize('analytics.read.platform'), asyncHandler(analyticsController.getPlatformStats));
 router.get('/course/:courseId', authorize('analytics.read.platform'), asyncHandler(analyticsController.getCourseStats));

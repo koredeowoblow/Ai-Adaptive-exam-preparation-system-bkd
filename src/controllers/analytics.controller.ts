@@ -29,6 +29,13 @@ export class AnalyticsController {
     const stats = await analyticsService.getStudentAnalytics(studentId);
     return sendResponse(res, 200, 'Student analytics retrieved successfully', stats);
   };
+
+  getCohortBenchmark = async (req: Request, res: Response) => {
+    // @ts-ignore
+    const studentId = (req.params.studentId as string) || req.user.id;
+    const stats = await analyticsService.getCohortBenchmark(studentId);
+    return sendResponse(res, 200, 'Cohort benchmark retrieved successfully', stats);
+  };
 }
 
 export const analyticsController = new AnalyticsController();

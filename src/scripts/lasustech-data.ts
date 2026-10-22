@@ -1,3 +1,17 @@
+import { SeedDiagrams } from "./seed-diagrams";
+
+export interface SeedSubPart {
+  id: string;
+  label: string; // e.g. "1(a)", "1(a)(i)", "1(a)(ii)", "1(a)(iii)", "1(b)", "1(b)(i)", "1(b)(ii)", "1(c)"
+  prompt: string;
+  maxMarks: number;
+  modelAnswer: string;
+  rubric: { point: string; weight: number }[];
+  diagramUrl?: string;
+  diagramCaption?: string;
+  order?: number;
+}
+
 export interface SeedQuestion {
   q: string;
   a?: string;
@@ -6,6 +20,13 @@ export interface SeedQuestion {
   d?: string;
   ans?: string;
   exp: string;
+  type?: 'MULTIPLE_CHOICE' | 'THEORY';
+  diagramUrl?: string;
+  diagramCaption?: string;
+  hasSubParts?: boolean;
+  subParts?: SeedSubPart[];
+  modelAnswer?: string;
+  rubric?: { point: string; weight: number }[];
 }
 
 export interface SeedCourse {
@@ -39,7 +60,90 @@ export const lasustechSeedData: SeedDepartment[] = [
           { q: "What is the primary function of the Central Processing Unit (CPU)?", a: "Storing long-term files", b: "Executing instructions and processing data", c: "Managing network routing", d: "Rendering sound signals", ans: "B", exp: "The CPU performs arithmetic, logical, and control operations to execute program instructions." },
           { q: "Which number system is native to digital computer hardware?", a: "Decimal", b: "Binary", c: "Octal", d: "Hexadecimal", ans: "B", exp: "Digital electronics operate on high and low voltage states representing binary 1 and 0." },
           { q: "What is the role of an operating system kernel?", a: "Translating HTML", b: "Core resource management and hardware abstraction", c: "Scanning malware", d: "Compiling Python", ans: "B", exp: "The kernel manages CPU, memory, and device drivers at the lowest privilege level." },
-          { q: "Explain the fundamental difference between volatile and non-volatile computer memory.", exp: "Volatile memory like RAM loses its contents when power is disconnected, whereas non-volatile storage like SSDs and ROM retains data permanently without electrical power." }
+          {
+            q: "Consider the digital logic circuit schematic shown in Figure 1.1, representing a 1-bit binary Full Adder with carry lookahead logic.",
+            exp: "Comprehensive digital logic analysis of a 1-bit full adder circuit including Boolean formulation, truth table derivation, propagation delay, and glitch hazard mitigation.",
+            type: "THEORY",
+            diagramUrl: SeedDiagrams.fullAdderCircuit,
+            diagramCaption: "Figure 1.1: 1-Bit Full Adder Logic Gate Schematic",
+            hasSubParts: true,
+            subParts: [
+              {
+                id: "part-1a",
+                label: "1(a)",
+                prompt: "Define the operational role of a Full Adder in modern arithmetic logic units (ALU), and distinguish its functionality from a Half Adder.",
+                maxMarks: 4,
+                modelAnswer: "A Full Adder computes the arithmetic sum of three single binary bits: two input operands (A and B) and an incoming carry bit (Cin). In contrast, a Half Adder only adds two single-bit operands (A and B) and lacks any mechanism to incorporate an incoming carry from a previous arithmetic stage. Consequently, cascading multiple Full Adders allows arbitrary n-bit binary integer addition in ALUs.",
+                rubric: [
+                  { point: "Accurate distinction regarding Cin acceptance between Full and Half Adders", weight: 2 },
+                  { point: "Operational role in cascading multi-bit arithmetic units within modern ALUs", weight: 2 }
+                ],
+                order: 1
+              },
+              {
+                id: "part-1a-i",
+                label: "1(a)(i)",
+                prompt: "Derive the canonical Boolean algebraic expression for the Sum output terminal S in terms of inputs A, B, and Cin.",
+                maxMarks: 3,
+                modelAnswer: "The Sum output represents the odd-parity XOR sum of all three inputs: S = A ⊕ B ⊕ Cin. In canonical sum-of-products (SOP) minterm form: S = A'B'Cin + A'BCin' + AB'Cin' + ABCin.",
+                rubric: [
+                  { point: "Correct Boolean expression S = A ⊕ B ⊕ Cin", weight: 1.5 },
+                  { point: "Canonical SOP or intermediate XOR gate derivation", weight: 1.5 }
+                ],
+                order: 2
+              },
+              {
+                id: "part-1a-ii",
+                label: "1(a)(ii)",
+                prompt: "Derive the minimized Boolean algebraic expression for the Carry Out (Cout) terminal, and show how it is synthesized from gates XOR 1, AND 1, AND 2, and OR 1 in Figure 1.1.",
+                maxMarks: 4,
+                modelAnswer: "The Carry Out signal is generated when at least two inputs are 1: Cout = (A · B) + (Cin · (A ⊕ B)). Gate synthesis: AND 1 computes A · B, XOR 1 computes A ⊕ B, AND 2 computes Cin · (A ⊕ B), and OR 1 sums these two partial terms to yield Cout.",
+                rubric: [
+                  { point: "Correct Boolean equation Cout = (A·B) + Cin·(A⊕B)", weight: 2 },
+                  { point: "Explicit mapping of terms to circuit gates AND1, AND2, and OR1", weight: 2 }
+                ],
+                order: 3
+              },
+              {
+                id: "part-1a-iii",
+                label: "1(a)(iii)",
+                prompt: "Construct the complete truth table for all eight input combinations of (A, B, Cin) verifying the Sum and Carry Out outputs.",
+                maxMarks: 4,
+                modelAnswer: "Truth table: (0,0,0)->(S=0,Cout=0); (0,0,1)->(S=1,Cout=0); (0,1,0)->(S=1,Cout=0); (0,1,1)->(S=0,Cout=1); (1,0,0)->(S=1,Cout=0); (1,0,1)->(S=0,Cout=1); (1,1,0)->(S=0,Cout=1); (1,1,1)->(S=1,Cout=1).",
+                rubric: [
+                  { point: "All 8 input combinations listed systematically", weight: 2 },
+                  { point: "100% accurate Sum and Carry Out evaluation across all rows", weight: 2 }
+                ],
+                order: 4
+              },
+              {
+                id: "part-1b-i",
+                label: "1(b)(i)",
+                prompt: "Refer to the timing waveform shown below. Explain what causes the transient static-1 hazard glitch at Output Y during input transitions.",
+                diagramUrl: SeedDiagrams.timingWaveform,
+                diagramCaption: "Figure 1.2: Gate Propagation Delay & Hazard Glitch Waveform",
+                maxMarks: 5,
+                modelAnswer: "Static hazards occur due to unequal propagation delays along converging signal paths. When input A transitions, the direct path to the gate responds faster than the delayed path through Node X (Δt = 4.2ns). During this brief propagation window, both inputs to the output gate momentarily satisfy the false condition, dropping the output to 0 before recovering to 1.",
+                rubric: [
+                  { point: "Identification of unequal path propagation delays", weight: 2.5 },
+                  { point: "Explanation of momentary invalid state during signal race", weight: 2.5 }
+                ],
+                order: 5
+              },
+              {
+                id: "part-1b-ii",
+                label: "1(b)(ii)",
+                prompt: "Propose two engineering remedies to eliminate or mask this hazard glitch in synchronous high-speed digital systems.",
+                maxMarks: 4,
+                modelAnswer: "1) Adding redundant consensus terms (hazard-free logic synthesis) on Karnaugh maps to bridge adjacent minterm groupings. 2) Synchronous clock gating and registering outputs into D flip-flops, sampling signals only after the propagation delay and glitch have settled.",
+                rubric: [
+                  { point: "Consensus terms / redundant cover on Karnaugh map", weight: 2 },
+                  { point: "Synchronous registered output / clock sampling delay", weight: 2 }
+                ],
+                order: 6
+              }
+            ]
+          }
         ]
       },
       {
@@ -50,7 +154,100 @@ export const lasustechSeedData: SeedDepartment[] = [
           { q: "What is an algorithm in computing?", a: "A programming language syntax", b: "Step-by-step sequence of instructions to solve a problem", c: "A hardware component", d: "A database table", ans: "B", exp: "An algorithm is an unambiguous, finite sequence of steps solving a specific computational task." },
           { q: "Which graphical tool represents logic flow with shapes like diamonds and rectangles?", a: "UML Class Diagram", b: "Flowchart", c: "Circuit schematic", d: "Entity Relationship Diagram", ans: "B", exp: "Flowcharts use standardized symbols to trace decision branches and execution flow." },
           { q: "What control structure repeatedly executes a block of code while a condition is true?", a: "Sequence", b: "Selection", c: "Iteration / Loop", d: "Exception", ans: "C", exp: "While and for loops iterate code blocks until termination criteria are met." },
-          { q: "Describe the three core control structures used in structured algorithm design.", exp: "Structured programming relies on Sequence (sequential statement execution), Selection (if-then-else decision making), and Iteration (while or for loops)." }
+          {
+            q: "Figure 6.1 displays the state transition graph of a Deterministic Finite Automaton (DFA) over the alphabet Σ = {0, 1}.",
+            exp: "Formal language and automata analysis of a 3-state DFA verifying language recognition, string tracing, transition functions, and regular expression synthesis.",
+            type: "THEORY",
+            diagramUrl: SeedDiagrams.dfaAutomaton,
+            diagramCaption: "Figure 6.1: DFA State Transition Graph for Language L",
+            hasSubParts: true,
+            subParts: [
+              {
+                id: "part-dfa-1a",
+                label: "1a",
+                prompt: "Define a Deterministic Finite Automaton formally as a 5-tuple M = (Q, Σ, δ, q0, F) and specify the exact mathematical set components for the automaton illustrated in Figure 6.1.",
+                maxMarks: 4,
+                modelAnswer: "A DFA is a 5-tuple M = (Q, Σ, δ, q0, F) where: Q is the finite set of states {q0, q1, q2}; Σ is the finite input alphabet {0, 1}; δ: Q × Σ → Q is the transition function; q0 ∈ Q is the designated initial state (q0); and F ⊆ Q is the set of accepting / final states {q2}.",
+                rubric: [
+                  { point: "Accurate theoretical 5-tuple definition of a DFA", weight: 2 },
+                  { point: "Correct specification of Q, Σ, q0, and F from Figure 6.1", weight: 2 }
+                ],
+                order: 1
+              },
+              {
+                id: "part-dfa-ai",
+                label: "ai",
+                prompt: "Trace the step-by-step state sequence for each of the following input strings, and state whether each string is ACCEPTED or REJECTED: (i) '10101', (ii) '00100', (iii) '1101'.",
+                maxMarks: 4,
+                modelAnswer: "(i) '10101': q0 --1--> q0 --0--> q1 --1--> q2 --0--> q1 --1--> q2 (Ends in q2: ACCEPTED). (ii) '00100': q0 --0--> q1 --0--> q1 --1--> q2 --0--> q1 --0--> q1 (Ends in q1: REJECTED). (iii) '1101': q0 --1--> q0 --1--> q0 --0--> q1 --1--> q2 (Ends in q2: ACCEPTED).",
+                rubric: [
+                  { point: "Accurate path trace for string (i) and correct acceptance verdict", weight: 1.5 },
+                  { point: "Accurate path traces for strings (ii) and (iii) with correct verdicts", weight: 2.5 }
+                ],
+                order: 2
+              },
+              {
+                id: "part-dfa-aii",
+                label: "aii",
+                prompt: "State in precise mathematical set-builder notation the exact regular language L recognized by this automaton.",
+                maxMarks: 3,
+                modelAnswer: "L = { w ∈ {0, 1}* | w ends with the substring '01' }. Formally: L = { x01 | x ∈ {0, 1}* }.",
+                rubric: [
+                  { point: "Clear identification that strings must terminate with '01'", weight: 1.5 },
+                  { point: "Proper formal set-builder or concatenation notation", weight: 1.5 }
+                ],
+                order: 3
+              },
+              {
+                id: "part-dfa-aiii",
+                label: "aiii",
+                prompt: "Construct the complete state transition table δ(q, σ) for all states q ∈ Q and inputs σ ∈ Σ.",
+                maxMarks: 3,
+                modelAnswer: "Transition Table:\nState | Input 0 | Input 1\n----------------------\n-> q0 |   q1    |   q0  \n   q1 |   q1    |   q2  \n * q2 |   q1    |   q0  ",
+                rubric: [
+                  { point: "Systematic matrix/table structure with initial and accepting indicators", weight: 1 },
+                  { point: "100% correct transition targets across all 6 state-input combinations", weight: 2 }
+                ],
+                order: 4
+              },
+              {
+                id: "part-dfa-1b",
+                label: "1b",
+                prompt: "Derive an equivalent regular expression for the language accepted by this DFA using the state elimination technique or Arden's Lemma.",
+                maxMarks: 4,
+                modelAnswer: "Starting at q0, strings can loop on '1's or consume any sequence of '0's and '1's as long as they terminate with '01'. The resulting minimal regular expression is: (0 + 1)* 0 1.",
+                rubric: [
+                  { point: "Valid derivation steps via state elimination or prefix analysis", weight: 2 },
+                  { point: "Accurate final regular expression (0+1)*01", weight: 2 }
+                ],
+                order: 5
+              },
+              {
+                id: "part-dfa-bi",
+                label: "bi",
+                prompt: "State the Pumping Lemma for regular languages, and outline the proof technique to establish that the non-regular language L_pal = { w w^R | w ∈ {0,1}* } cannot be recognized by any finite automaton.",
+                maxMarks: 4,
+                modelAnswer: "The Pumping Lemma states that for any regular language L, there exists a pumping length p such that any string s ∈ L with |s| >= p can be split into s = xyz satisfying: 1) |y| > 0, 2) |xy| <= p, 3) for all i >= 0, x(y^i)z ∈ L. To prove L_pal is not regular, choose string s = 0^p 1 1 0^p. Because |xy| <= p, y consists purely of 0s. Pumping with i = 0 or 2 yields an unequal count of 0s on the sides, violating symmetry and contradicting regularity.",
+                rubric: [
+                  { point: "Precise statement of Pumping Lemma 3 conditions", weight: 2 },
+                  { point: "Sound contradiction proof by pumping a chosen adversary string", weight: 2 }
+                ],
+                order: 6
+              },
+              {
+                id: "part-dfa-bii",
+                label: "bii",
+                prompt: "Explain how to construct a DFA that recognizes the intersection of two regular languages L1 and L2 using the Cartesian Product Machine construction.",
+                maxMarks: 4,
+                modelAnswer: "Given DFAs M1 = (Q1, Σ, δ1, q01, F1) and M2 = (Q2, Σ, δ2, q02, F2), the product DFA M_inter is defined with Q = Q1 × Q2, start state (q01, q02), transition function δ((p, q), a) = (δ1(p, a), δ2(q, a)), and accepting states F = F1 × F2. A string is accepted if and only if both machines simultaneously land in their respective accepting states.",
+                rubric: [
+                  { point: "Formulation of Cartesian product states Q1 × Q2 and composite transitions", weight: 2 },
+                  { point: "Acceptance condition F1 × F2 for language intersection", weight: 2 }
+                ],
+                order: 7
+              }
+            ]
+          }
         ]
       },
       {

@@ -9,5 +9,8 @@ const router = Router();
 router.post('/explain', protect, asyncHandler(aiController.generateExplanation));
 router.post('/chat', protect, asyncHandler(aiController.chatWithAI));
 router.post('/study-plan', protect, asyncHandler(aiController.generateStudyPlan));
+router.post('/tutor-question', protect, asyncHandler(aiController.socraticTutorChat));
+router.post('/distractor-analysis', protect, asyncHandler(aiController.analyzeDistractor));
+router.post('/refine-explanation', protect, asyncHandler(aiController.refineExplanation));
 
 export const aiRoutes = router;
