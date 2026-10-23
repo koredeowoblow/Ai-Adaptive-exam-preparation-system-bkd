@@ -1,4 +1,6 @@
+import mongoose from 'mongoose';
 import { analyticsRepository } from '../repositories/analytics.repository';
+import { cacheService } from '../utils/cache';
 
 export class AnalyticsService {
   async getPlatformAnalytics() {
@@ -762,7 +764,7 @@ export class AnalyticsService {
     };
   }
 
-  async getCohortBenchmark(studentId: string) {
+  async getCohortBenchmark(studentId: string, courseId?: string) {
     const { Student } = await import('../models/student.model');
     const { PracticeSession } = await import('../models/practice.model');
     const { MasteryRecord } = await import('../models/mastery.model');
@@ -773,75 +775,109 @@ export class AnalyticsService {
     }
 
     const departmentName = (studentDoc.departmentId as any)?.name || 'Computer Science';
+    const deptId = studentDoc.departmentId
+      ? ((studentDoc.departmentId as any)._id?.toString() || studentDoc.departmentId.toString())
+      : 'all';
     const level = studentDoc.level || '300L';
+    const courseKey = courseId || 'all';
 
-    // Fetch cohort peers (same department & level, or same level)
-    const cohortQuery: any = { level };
-    if (studentDoc.departmentId) {
-      cohortQuery.departmentId = (studentDoc.departmentId as any)._id || studentDoc.departmentId;
-    }
+    // 1-hour Redis cache keyed by department, level, and course
+    const cacheKey = `analytics:cohort:${deptId}:${level}:${courseKey}`;
+    const cohortData = await cacheService.getOrSetSingleFlight(cacheKey, 3600, async () => {
+      // Fetch cohort peers (same department & level, or same level)
+      const cohortQuery: any = { level };
+      if (studentDoc.departmentId) {
+        cohortQuery.departmentId = (studentDoc.departmentId as any)._id || studentDoc.departmentId;
+      }
 
-    let cohortStudents = await Student.find(cohortQuery).select('_id name level departmentId').lean();
-    if (cohortStudents.length < 5) {
-      // Fallback to all students in this level if department cohort is small
-      cohortStudents = await Student.find({ level }).select('_id name level departmentId').lean();
-    }
-    if (cohortStudents.length === 0) {
-      cohortStudents = [studentDoc as any];
-    }
+      let cohortStudents = await Student.find(cohortQuery).select('_id name level departmentId').lean();
+      if (cohortStudents.length < 5) {
+        // Fallback to all students in this level if department cohort is small
+        cohortStudents = await Student.find({ level }).select('_id name level departmentId').lean();
+      }
+      if (cohortStudents.length === 0) {
+        cohortStudents = [studentDoc as any];
+      }
 
-    const cohortStudentIds = cohortStudents.map((s) => s._id);
+      const cohortStudentIds = cohortStudents.map((s) => s._id);
 
-    // Fetch all completed sessions for this cohort
-    const [cohortSessions, studentSessions, studentMasteryRecords] = await Promise.all([
-      PracticeSession.find({
+      // MongoDB aggregation pipeline: only fetch the needed student average scores
+      const matchStage: any = {
         studentId: { $in: cohortStudentIds },
         status: 'completed',
         isArchived: { $ne: true },
-      })
-        .select('studentId score percentage scorePercentage accuracy questionsAnswered correctAnswers')
-        .lean(),
-      PracticeSession.find({
-        studentId: studentDoc._id,
-        status: 'completed',
-        isArchived: { $ne: true },
-      })
-        .select('score percentage scorePercentage accuracy questionsAnswered correctAnswers')
-        .lean(),
+      };
+      if (courseId) {
+        matchStage.courseId = new mongoose.Types.ObjectId(courseId);
+      }
+
+      const cohortAgg = await PracticeSession.aggregate([
+        { $match: matchStage },
+        {
+          $group: {
+            _id: '$studentId',
+            avgScore: {
+              $avg: {
+                $ifNull: ['$percentage', { $ifNull: ['$scorePercentage', '$score'] }],
+              },
+            },
+          },
+        },
+      ]);
+
+      const scores = cohortAgg
+        .map((item) => Math.round(item.avgScore || 0))
+        .filter((sc) => !isNaN(sc));
+
+      const baseScores = scores.length > 0 ? scores : [65];
+      baseScores.sort((a, b) => a - b);
+
+      const cohortSum = baseScores.reduce((a, b) => a + b, 0);
+      const cohortAverage = Math.round(cohortSum / baseScores.length);
+      const cohortMedian = baseScores[Math.floor(baseScores.length / 2)] || 65;
+
+      return {
+        departmentName,
+        level,
+        totalCohortStudents: cohortStudents.length,
+        scores: baseScores,
+        cohortAverage,
+        cohortMedian,
+      };
+    });
+
+    // Student's own score via targeted aggregation + mastery records in parallel
+    const [studentAgg, studentMasteryRecords] = await Promise.all([
+      PracticeSession.aggregate([
+        {
+          $match: {
+            studentId: studentDoc._id,
+            status: 'completed',
+            isArchived: { $ne: true },
+            ...(courseId ? { courseId: new mongoose.Types.ObjectId(courseId) } : {}),
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            avgScore: {
+              $avg: {
+                $ifNull: ['$percentage', { $ifNull: ['$scorePercentage', '$score'] }],
+              },
+            },
+          },
+        },
+      ]),
       MasteryRecord.find({ studentId: studentDoc._id }).populate('topicId', 'name category').lean(),
     ]);
 
-    // Calculate average score per student in cohort
-    const studentScoresMap: Record<string, { total: number; count: number; avg: number }> = {};
-    cohortSessions.forEach((sess) => {
-      const sId = sess.studentId.toString();
-      if (!studentScoresMap[sId]) {
-        studentScoresMap[sId] = { total: 0, count: 0, avg: 0 };
-      }
-      const score = (sess as any).percentage ?? (sess as any).scorePercentage ?? sess.score ?? 0;
-      studentScoresMap[sId].total += score;
-      studentScoresMap[sId].count += 1;
-    });
+    const studentAvgScore =
+      studentAgg.length > 0 && studentAgg[0].avgScore != null
+        ? Math.round(studentAgg[0].avgScore)
+        : 72; // default benchmark if fresh account
 
-    Object.keys(studentScoresMap).forEach((sId) => {
-      const rec = studentScoresMap[sId];
-      rec.avg = rec.count > 0 ? Math.round(rec.total / rec.count) : 0;
-    });
-
-    // Student's own score
-    let studentAvgScore = 0;
-    if (studentSessions.length > 0) {
-      const total = studentSessions.reduce(
-        (sum, s) => sum + ((s as any).percentage ?? (s as any).scorePercentage ?? s.score ?? 0),
-        0
-      );
-      studentAvgScore = Math.round(total / studentSessions.length);
-    } else {
-      studentAvgScore = 72; // default benchmark if fresh account
-    }
-
-    // Cohort scores array
-    const allCohortScores = Object.values(studentScoresMap).map((rec) => rec.avg);
+    // Cohort scores array with requesting student included
+    const allCohortScores = [...cohortData.scores];
     if (!allCohortScores.includes(studentAvgScore)) {
       allCohortScores.push(studentAvgScore);
     }
@@ -853,9 +889,8 @@ export class AnalyticsService {
     const percentile = Math.min(99, Math.max(5, rawPercentile));
 
     // Cohort median and average
-    const cohortSum = allCohortScores.reduce((a, b) => a + b, 0);
-    const cohortAverage = Math.round(cohortSum / allCohortScores.length);
-    const cohortMedian = allCohortScores[Math.floor(allCohortScores.length / 2)] || 65;
+    const cohortAverage = cohortData.cohortAverage;
+    const cohortMedian = cohortData.cohortMedian;
 
     // 6-Dimension Competency Radar
     const dimensionDefs = [
@@ -920,10 +955,10 @@ export class AnalyticsService {
 
     return {
       cohort: {
-        departmentName,
-        level,
-        cohortLabel: `LASUSTECH ${departmentName} (${level})`,
-        totalStudents: Math.max(cohortStudents.length, allCohortScores.length),
+        departmentName: cohortData.departmentName,
+        level: cohortData.level,
+        cohortLabel: `LASUSTECH ${cohortData.departmentName} (${cohortData.level})`,
+        totalStudents: Math.max(cohortData.totalCohortStudents, allCohortScores.length),
         cohortAverage,
         cohortMedian,
       },

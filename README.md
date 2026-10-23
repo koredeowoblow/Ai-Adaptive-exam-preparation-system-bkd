@@ -35,6 +35,8 @@ Required variables (use your own credentials):
 - `JWT_SECRET`: Secret key for JWT signing (at least 32 characters)
 - `GROQ_API_KEY`: Groq API key for AI grading
 - `LOG_LEVEL`: Logging verbosity level (info, debug, etc.)
+- `TRUST_PROXY`: Reverse proxy hop count or configuration (default `1`). In typical production deployments behind a reverse proxy (e.g. Nginx, Cloudflare, or Docker/PaaS gateway), `1` indicates one proxy hop in front of Express so `req.ip` and rate limiters evaluate real client IP addresses. Can be set to a custom number, `'true'`, or a specific CIDR/subnet.
+- `GROQ_TUTOR_CONCURRENCY`: Global concurrency cap for Socratic tutor LLM calls across all instances via Redis (default `15`).
 
 ### 3. Run the development server
 

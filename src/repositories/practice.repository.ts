@@ -41,7 +41,8 @@ export class PracticeRepository {
     return PracticeSession.findById(id)
       .populate('courseId', 'title code')
       .populate('studentId', 'name email level')
-      .populate('questionsServed.questionId');
+      .populate('questionsServed.questionId')
+      .populate('questionsServed.topicId', 'name');
   }
 
   async findActiveSession(studentId: string, courseId: string, mode?: 'quick' | 'mock' | 'diagnostic') {
@@ -50,7 +51,8 @@ export class PracticeRepository {
     return PracticeSession.findOne(query)
       .populate('courseId', 'title code')
       .populate('studentId', 'name email level')
-      .populate('questionsServed.questionId');
+      .populate('questionsServed.questionId')
+      .populate('questionsServed.topicId', 'name');
   }
 
 

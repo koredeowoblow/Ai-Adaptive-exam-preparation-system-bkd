@@ -336,12 +336,15 @@ export const processExamJob = async (job: Job | any) => {
     const totalQuestions = session.totalQuestions || session.questionsServed.length;
     const finalScore = totalQuestions > 0 ? (correctAnswersCount / totalQuestions) * 100 : 0;
 
+    const finalTrustScore = practiceService.calculateTrustScore(session.antiCheatEvents || []);
+
     const finalizedSession = await PracticeSession.findOneAndUpdate(
       { _id: sessionId, status: { $in: ['PENDING_GRADING', 'active'] } },
       {
         $set: {
           status: 'completed',
           score: finalScore,
+          trustScore: finalTrustScore,
           correctAnswers: correctAnswersCount,
           questionsServed: session.questionsServed,
           endedAt: session.endedAt || new Date(),

@@ -7,7 +7,6 @@ import { sendResponse } from './utils/sendResponse';
 import { v1Routes } from './routes/v1';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 
 const app = express();
 
@@ -39,18 +38,30 @@ app.use(
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use(express.text({ type: ['text/plain', 'text/*'], limit: '2mb' }));
+app.use((req, _res, next) => {
+  if (typeof req.body === 'string' && req.body.trim().startsWith('{')) {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch {
+      // ignore
+    }
+  }
+  next();
+});
 
 // Serve static uploads if using local fallback
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 300, // Limit each IP to 300 requests per 15-minute window
-  message: { success: false, message: 'Too many requests from this IP, please try again after 15 minutes' },
-  keyGenerator: (req) => ipKeyGenerator(req.ip || '127.0.0.1'),
-  skip: () => process.env.NODE_ENV === 'test',
-});
-app.use(generalLimiter);
+// Configure trust proxy so express-rate-limit and req.ip accurately resolve client IPs
+// behind reverse proxies (Nginx, Docker, Cloudflare, etc.) without logging ERR_ERL_UNSET_TRUST_PROXY.
+// Deployment runs an Express cluster behind 1 reverse proxy, so the default is 1.
+if (process.env.TRUST_PROXY) {
+  const tp = process.env.TRUST_PROXY;
+  app.set('trust proxy', tp === 'true' ? true : isNaN(Number(tp)) ? tp : Number(tp));
+} else {
+  app.set('trust proxy', 1);
+}
 
 // Health Check Route
 app.get('/health', (req: Request, res: Response) => {

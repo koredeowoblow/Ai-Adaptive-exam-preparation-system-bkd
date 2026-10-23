@@ -2,11 +2,8 @@ import { masteryRepository } from "../repositories/mastery.repository";
 import { questionRepository } from "../repositories/question.repository";
 import { topicRepository } from "../repositories/topic.repository";
 import { masteryService } from './mastery.service';
-import { AppError } from "../utils/AppError";
 import { IMasteryRecordDocument } from "../types/mastery.types";
 import { IQuestionDocument } from "../types/question.types";
-
-import { any } from "zod";
 
 export class AdaptiveService {
 
@@ -20,79 +17,91 @@ export class AdaptiveService {
     questionId: string,
     isCorrect: boolean,
   ) {
-    // 1. Atomic counters for question statistics - always guaranteed (fire-and-forget safe)
-    await this.updateQuestionStatistics(questionId, isCorrect);
+    try {
+      // 1. Atomic counters for question statistics - always guaranteed (fire-and-forget safe)
+      await this.updateQuestionStatistics(questionId, isCorrect).catch((err) => {
+        console.warn(`[ELO_WARN] Failed to update question statistics for ${questionId}:`, err);
+      });
 
-    // 2. Unconditional atomic update of answer counters on MasteryRecord
-    //    These MUST succeed regardless of Elo contention. Separated from the Elo CAS loop.
+      // 2. Unconditional atomic update of answer counters on MasteryRecord
+      //    These MUST succeed regardless of Elo contention. Separated from the Elo CAS loop.
+      const masteryRecord = await masteryService.getOrCreateRecord(studentId, courseId, topicId);
+      if (!masteryRecord) {
+        console.warn(`[ELO_WARN] Mastery record not found for student ${studentId}, topic ${topicId}. Skipping Elo.`);
+        return;
+      }
 
-    const masteryRecord = await masteryService.getOrCreateRecord(studentId, courseId, topicId);
-    if (!masteryRecord) throw new AppError('Mastery record not found', 500);
+      await this.incrementAnswerCounters(masteryRecord._id.toString(), isCorrect).catch((err) => {
+        console.warn(`[ELO_WARN] Failed to increment mastery counters:`, err);
+      });
 
-    await this.incrementAnswerCounters(masteryRecord._id.toString(), isCorrect);
+      // 3. Elo Conditional Updates - bounded to 3 retries with exponential backoff
+      const MAX_RETRIES = 3;
+      let masteryDone = false;
+      let questionDone = false;
 
-    // 3. Elo Conditional Updates - best-effort with bounded retry & exponential backoff
-    const MAX_RETRIES = 20;
-    let masteryDone = false;
-    let questionDone = false;
+      // Tracking masteryDone and questionDone independently ensures that if 
+      // one operation succeeds while the other fails (due to contention), we do not 
+      // re-calculate and re-apply a delta against an already-updated value.
+      for (let i = 0; i < MAX_RETRIES; i++) {
+        // Re-read current state to ensure fresh Elo
+        const freshRecord = await masteryService.getOrCreateRecord(studentId, courseId, topicId);
+        if (!freshRecord) continue;
+        const question = await questionRepository.findByIdDirect(questionId);
 
-    // Bugfix note: Tracking masteryDone and questionDone independently ensures that if 
-    // one operation succeeds while the other fails (due to contention), we do not 
-    // re-calculate and re-apply a delta against a value that was already updated in a 
-    // prior iteration (which would artificially inflate/deflate Elo).
-    for (let i = 0; i < MAX_RETRIES; i++) {
-      // Re-read current state to ensure fresh Elo
-      const freshRecord = await masteryService.getOrCreateRecord(studentId, courseId, topicId);
-      if (!freshRecord) continue;
-      const question = await questionRepository.findByIdDirect(questionId);
+        if (!question) {
+          console.warn(`[ELO_WARN] Question ${questionId} not found during Elo calculation. Skipping.`);
+          return;
+        }
 
-      if (!question)
-        throw new AppError('Question not found during Elo calculation', 404);
-
-      const expectedProb = this.calculateExpectedProbability(
-        freshRecord.eloRating,
-        question.eloRating,
-      );
-
-      const kStudent = freshRecord.confidence < 0.3 ? 64 : 32;
-      const kQuestion = question.exposureCount < 20 ? 64 : 16;
-      const actualResult = isCorrect ? 1 : 0;
-
-      if (!masteryDone) {
-        const newStudentElo = this.calculateEloChange(
+        const expectedProb = this.calculateExpectedProbability(
           freshRecord.eloRating,
-          expectedProb,
-          actualResult,
-          kStudent,
-        );
-        masteryDone = await this.updateStudentEloConditionally(freshRecord, newStudentElo);
-      }
-
-      if (!questionDone) {
-        const newQuestionElo = this.calculateEloChange(
           question.eloRating,
-          1 - expectedProb,
-          1 - actualResult,
-          kQuestion,
         );
-        questionDone = await this.updateQuestionEloConditionally(question, newQuestionElo);
+
+        const kStudent = freshRecord.confidence < 0.3 ? 64 : 32;
+        const kQuestion = question.exposureCount < 20 ? 64 : 16;
+        const actualResult = isCorrect ? 1 : 0;
+
+        if (!masteryDone) {
+          const newStudentElo = this.calculateEloChange(
+            freshRecord.eloRating,
+            expectedProb,
+            actualResult,
+            kStudent,
+          );
+          masteryDone = await this.updateStudentEloConditionally(freshRecord, newStudentElo);
+        }
+
+        if (!questionDone) {
+          const newQuestionElo = this.calculateEloChange(
+            question.eloRating,
+            1 - expectedProb,
+            1 - actualResult,
+            kQuestion,
+          );
+          questionDone = await this.updateQuestionEloConditionally(question, newQuestionElo);
+        }
+
+        if (masteryDone && questionDone) {
+          return; // Both Elo updates succeeded
+        }
+
+        // Contention detected. Exponential backoff with jitter before retrying
+        const backoff = Math.min(10 * Math.pow(2, i), 100);
+        await new Promise((resolve) =>
+          setTimeout(resolve, backoff + Math.random() * 20),
+        );
       }
 
-      if (masteryDone && questionDone) {
-        return; // Both Elo updates succeeded
-      }
-
-      // Contention detected. Exponential backoff with jitter before retrying
-      const backoff = Math.min(10 * Math.pow(2, i), 200); // 10ms, 20ms, 40ms... capped at 200ms
-      await new Promise((resolve) =>
-        setTimeout(resolve, backoff + Math.random() * 20),
+      // Elo collided after MAX_RETRIES (3). Skip update and log it gracefully.
+      console.warn(
+        `[ELO_CONTENTION_WARN] Failed to update Elo completely for student ${studentId} after ${MAX_RETRIES} retries. Mastery updated: ${masteryDone}, Question updated: ${questionDone}. Skipping update.`,
       );
+    } catch (err) {
+      // Never fail the student's request because of an Elo update
+      console.warn(`[ELO_UPDATE_ERROR] Non-fatal error during Elo calculation for question ${questionId}:`, err);
     }
-
-    // Elo failed after MAX_RETRIES. Answer is already logged atomically above.
-    console.warn(
-      `[ELO_CONTENTION_WARN] Failed to update Elo completely for student ${studentId} after ${MAX_RETRIES} retries. Mastery updated: ${masteryDone}, Question updated: ${questionDone}.`,
-    );
   }
 
   /**
@@ -106,102 +115,105 @@ export class AdaptiveService {
   ) {
     if (answers.length === 0) return;
 
+    try {
+      // 1. Fetch all involved questions
+      const questionIds = answers.map((a) => a.questionId);
+      const questions = await questionRepository.findManyByIds(questionIds);
+      const questionMap = new Map(questions.map((q: any) => [q._id.toString(), q]));
 
-    // 1. Fetch all involved questions
-    const questionIds = answers.map((a) => a.questionId);
-    const questions = await questionRepository.findManyByIds(questionIds);
-    const questionMap = new Map(questions.map((q: any) => [q._id.toString(), q]));
+      // 2. Fetch all involved mastery records (topics)
+      const topicIds = Array.from(new Set(answers.map((a) => a.topicId)));
+      const masteryRecords = await Promise.all(
+        topicIds.map((topicId) => masteryService.getOrCreateRecord(studentId, courseId, topicId))
+      );
+      const masteryMap = new Map(masteryRecords.map((m: any) => [m.topicId._id.toString(), m]));
 
-    // 2. Fetch all involved mastery records (topics)
-    const topicIds = Array.from(new Set(answers.map((a) => a.topicId)));
-    const masteryRecords = await Promise.all(
-      topicIds.map((topicId) => masteryService.getOrCreateRecord(studentId, courseId, topicId))
-    );
-    const masteryMap = new Map(masteryRecords.map((m: any) => [m.topicId._id.toString(), m]));
+      // 3. Accumulate changes
+      const masteryUpdates = new Map<string, any>(); // topicId -> changes
+      const questionUpdates = new Map<string, any>(); // questionId -> changes
 
-    // 3. Accumulate changes
-    const masteryUpdates = new Map<string, any>(); // topicId -> changes
-    const questionUpdates = new Map<string, any>(); // questionId -> changes
+      for (const ans of answers) {
+        const q: any = questionMap.get(ans.questionId);
+        const m: any = masteryMap.get(ans.topicId);
 
-    for (const ans of answers) {
-      const q: any = questionMap.get(ans.questionId);
-      const m: any = masteryMap.get(ans.topicId);
+        if (!q || !m) continue;
 
-      if (!q || !m) continue;
+        // Question stats increment
+        let qStats = questionUpdates.get(ans.questionId) || { timesAnswered: 0, exposureCount: 0, timesCorrect: 0, eloDelta: 0 };
+        qStats.timesAnswered++;
+        qStats.exposureCount++;
+        if (ans.isCorrect) qStats.timesCorrect++;
 
-      // Question stats increment
-      let qStats = questionUpdates.get(ans.questionId) || { timesAnswered: 0, exposureCount: 0, timesCorrect: 0, eloDelta: 0 };
-      qStats.timesAnswered++;
-      qStats.exposureCount++;
-      if (ans.isCorrect) qStats.timesCorrect++;
+        // Mastery stats increment
+        let mStats = masteryUpdates.get(ans.topicId) || { questionsAttempted: 0, questionsCorrect: 0, eloDelta: 0, recentAnswers: [] };
+        mStats.questionsAttempted++;
+        if (ans.isCorrect) mStats.questionsCorrect++;
+        mStats.recentAnswers.push(ans.isCorrect);
 
-      // Mastery stats increment
-      let mStats = masteryUpdates.get(ans.topicId) || { questionsAttempted: 0, questionsCorrect: 0, eloDelta: 0, recentAnswers: [] };
-      mStats.questionsAttempted++;
-      if (ans.isCorrect) mStats.questionsCorrect++;
-      mStats.recentAnswers.push(ans.isCorrect);
+        // Elo Math
+        const expectedProb = this.calculateExpectedProbability(m.eloRating, q.eloRating);
+        const kStudent = m.confidence < 0.3 ? 64 : 32;
+        const kQuestion = q.exposureCount < 20 ? 64 : 16;
+        const actualResult = ans.isCorrect ? 1 : 0;
 
-      // Elo Math
-      const expectedProb = this.calculateExpectedProbability(m.eloRating, q.eloRating);
-      const kStudent = m.confidence < 0.3 ? 64 : 32;
-      const kQuestion = q.exposureCount < 20 ? 64 : 16;
-      const actualResult = ans.isCorrect ? 1 : 0;
+        const studentEloDelta = kStudent * (actualResult - expectedProb);
+        const questionEloDelta = kQuestion * ((1 - actualResult) - (1 - expectedProb));
 
-      const studentEloDelta = kStudent * (actualResult - expectedProb);
-      const questionEloDelta = kQuestion * ((1 - actualResult) - (1 - expectedProb));
+        mStats.eloDelta += studentEloDelta;
+        qStats.eloDelta += questionEloDelta;
 
-      mStats.eloDelta += studentEloDelta;
-      qStats.eloDelta += questionEloDelta;
+        questionUpdates.set(ans.questionId, qStats);
+        masteryUpdates.set(ans.topicId, mStats);
+      }
 
-      questionUpdates.set(ans.questionId, qStats);
-      masteryUpdates.set(ans.topicId, mStats);
-    }
-
-    // 4. Execute Bulk Writes
-    const questionBulkOps = Array.from(questionUpdates.entries()).map(([qId, stats]) => ({
-      updateOne: {
-        filter: { _id: qId },
-        update: {
-          $inc: {
-            timesAnswered: stats.timesAnswered,
-            exposureCount: stats.exposureCount,
-            timesCorrect: stats.timesCorrect,
-            eloRating: stats.eloDelta,
-          },
-        },
-      },
-    }));
-
-    if (questionBulkOps.length > 0) {
-      await questionRepository.bulkUpdateStats(questionBulkOps);
-    }
-
-    const masteryBulkOps = Array.from(masteryUpdates.entries()).map(([tId, stats]) => {
-      const m: any = masteryMap.get(tId);
-      const newConfidence = this.calculateConfidence(m.questionsAttempted + stats.questionsAttempted);
-      return {
+      // 4. Execute Bulk Writes
+      const questionBulkOps = Array.from(questionUpdates.entries()).map(([qId, stats]) => ({
         updateOne: {
-          filter: { _id: m._id },
+          filter: { _id: qId },
           update: {
             $inc: {
-              questionsAttempted: stats.questionsAttempted,
-              questionsCorrect: stats.questionsCorrect,
+              timesAnswered: stats.timesAnswered,
+              exposureCount: stats.exposureCount,
+              timesCorrect: stats.timesCorrect,
               eloRating: stats.eloDelta,
-            },
-            $set: {
-              lastAttemptedAt: new Date(),
-              confidence: newConfidence,
-            },
-            $push: {
-              recentAnswers: { $each: stats.recentAnswers, $slice: -10 },
             },
           },
         },
-      };
-    });
+      }));
 
-    if (masteryBulkOps.length > 0) {
-      await masteryRepository.bulkUpdateStats(masteryBulkOps);
+      if (questionBulkOps.length > 0) {
+        await questionRepository.bulkUpdateStats(questionBulkOps);
+      }
+
+      const masteryBulkOps = Array.from(masteryUpdates.entries()).map(([tId, stats]) => {
+        const m: any = masteryMap.get(tId);
+        const newConfidence = this.calculateConfidence(m.questionsAttempted + stats.questionsAttempted);
+        return {
+          updateOne: {
+            filter: { _id: m._id },
+            update: {
+              $inc: {
+                questionsAttempted: stats.questionsAttempted,
+                questionsCorrect: stats.questionsCorrect,
+                eloRating: stats.eloDelta,
+              },
+              $set: {
+                lastAttemptedAt: new Date(),
+                confidence: newConfidence,
+              },
+              $push: {
+                recentAnswers: { $each: stats.recentAnswers, $slice: -10 },
+              },
+            },
+          },
+        };
+      });
+
+      if (masteryBulkOps.length > 0) {
+        await masteryRepository.bulkUpdateStats(masteryBulkOps);
+      }
+    } catch (err) {
+      console.warn(`[ELO_BATCH_ERROR] Non-fatal error during batch Elo calculation for student ${studentId}:`, err);
     }
   }
 

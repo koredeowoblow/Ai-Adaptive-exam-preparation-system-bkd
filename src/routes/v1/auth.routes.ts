@@ -4,15 +4,7 @@ import { validateRequest } from '../../middlewares/validateRequest';
 import { loginSchema, registerSchema } from '../../validators/auth.validator';
 import { protect } from '../../middlewares/auth.middleware';
 import { asyncHandler } from '../../utils/asyncHandler';
-import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-
-const authLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 15, // Limit each IP to 15 authentication requests per minute
-  message: { success: false, message: 'Too many authentication attempts, please try again later.' },
-  keyGenerator: (req) => ipKeyGenerator(req.ip || '127.0.0.1'),
-  skip: () => process.env.NODE_ENV === 'test',
-});
+import { authLimiter, loginFailedAttemptsLimiter } from '../../middlewares/rateLimiter';
 
 const router = Router();
 
@@ -73,7 +65,7 @@ router.post('/register', authLimiter, validateRequest(registerSchema), asyncHand
  *       401:
  *         description: Invalid credentials
  */
-router.post('/login', authLimiter, validateRequest(loginSchema), asyncHandler(authController.login));
+router.post('/login', authLimiter, loginFailedAttemptsLimiter, validateRequest(loginSchema), asyncHandler(authController.login));
 
 /**
  * @swagger

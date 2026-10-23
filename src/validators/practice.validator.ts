@@ -34,9 +34,9 @@ export const logAntiCheatEventsSchema = z.object({
   body: z.object({
     events: z.array(
       z.object({
-        type: z.enum(['TAB_SWITCH', 'PASTE_DETECTED', 'FAST_ANSWER', 'DEVTOOLS_DETECTED', 'RIGHT_CLICK_BLOCKED']),
+        type: z.string(),
         questionId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid question ID format').optional(),
-        timestamp: z.string().datetime().or(z.date()),
+        timestamp: z.string().or(z.date()),
         metadata: z.any().optional(),
       })
     ),

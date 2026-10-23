@@ -95,6 +95,12 @@ const PracticeSessionSchema = new Schema<IPracticeSessionDocument>(
 
 PracticeSessionSchema.index({ studentId: 1, courseId: 1, status: 1 });
 PracticeSessionSchema.index({ studentId: 1, status: 1, endedAt: -1 });
+PracticeSessionSchema.index({ studentId: 1, status: 1, isArchived: 1, courseId: 1 });
+PracticeSessionSchema.index({ studentId: 1, isArchived: 1, _id: -1 });
+PracticeSessionSchema.index({ studentId: 1, courseId: 1, isArchived: 1, _id: -1 });
+PracticeSessionSchema.index({ courseId: 1, status: 1, isArchived: 1 });
+PracticeSessionSchema.index({ courseId: 1, isArchived: 1, createdAt: -1 });
+PracticeSessionSchema.index({ status: 1, createdAt: -1 });
 
 // Durable guard: exactly one active session per student, course, and mode
 PracticeSessionSchema.index(

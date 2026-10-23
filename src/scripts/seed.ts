@@ -52,6 +52,21 @@ class MockRes {
   }
 }
 
+export function isLocalOrDevDatabaseUri(uri: string): boolean {
+  if (!uri) return false;
+  const lower = uri.toLowerCase();
+  if (lower.includes('localhost') || lower.includes('127.0.0.1') || lower.includes('host.docker.internal') || lower.includes('::1')) {
+    return true;
+  }
+  if (/(dev|test|local|staging|sandbox|demo|e2e)/i.test(lower)) {
+    return true;
+  }
+  if (process.env.SEED_ALLOW_REMOTE === 'true') {
+    return true;
+  }
+  return false;
+}
+
 export async function seed() {
   if (process.env.NODE_ENV === 'production') {
     logger.error("Refusing to run seed script in production environment.");
@@ -66,15 +81,29 @@ export async function seed() {
     throw new Error("DEMO_ADMIN_PASSWORD and DEMO_STUDENT_PASSWORD environment variables must be configured.");
   }
 
+  if (process.env.SEED_CONFIRM !== 'true') {
+    logger.error("Refusing to seed: SEED_CONFIRM=true environment variable is required to confirm database wipe.");
+    throw new Error("SEED_CONFIRM=true environment variable is required to confirm database wipe.");
+  }
+
+  const rawUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/e2e_chat';
+  if (!isLocalOrDevDatabaseUri(rawUri)) {
+    logger.error(`Refusing to seed: Database URI does not look like a local or dev database: ${rawUri.replace(/:([^@]+)@/, ':****@')}`);
+    throw new Error("Refusing to seed: Database URI does not look like a local or dev database.");
+  }
+
   try {
     logger.info("Connecting to MongoDB...");
     await connectDatabase();
     logger.info("Connected to MongoDB");
 
+    const dbName = mongoose.connection.db?.databaseName || 'unknown';
+    logger.info(`About to drop database "${dbName}" for a fresh seed.`);
+
     // Clear existing collections
-    logger.info("Clearing old data...");
+    logger.info(`Clearing old data from database "${dbName}"...`);
     await mongoose.connection.db?.dropDatabase();
-    logger.info("Database dropped for a fresh seed.");
+    logger.info(`Database "${dbName}" dropped for a fresh seed.`);
 
     try {
       if (redisClient.status !== 'ready') {

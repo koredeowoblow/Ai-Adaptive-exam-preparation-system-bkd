@@ -380,6 +380,8 @@ export class PracticeService {
     session.questionsAnswered = data.answers.length;
     session.status = 'PENDING_GRADING';
     session.endedAt = new Date();
+    // Recompute final trust score from full event list at submit time
+    session.trustScore = this.calculateTrustScore(session.antiCheatEvents || []);
 
     // Save answers directly onto the session placeholders for the worker to read.
     for (const ans of data.answers) {
@@ -530,18 +532,77 @@ export class PracticeService {
     return Math.max(0, score);
   }
 
+  calculateBatchPenalty(events: any[]): number {
+    let penalty = 0;
+    for (const event of events) {
+      switch (event.type) {
+        case 'TAB_SWITCH':
+          penalty += 3;
+          break;
+        case 'PASTE_DETECTED':
+        case 'AI_PASTE_DETECTED':
+          penalty += 10;
+          break;
+        case 'FAST_ANSWER':
+          penalty += 8;
+          break;
+        case 'DEVTOOLS_DETECTED':
+          penalty += 15;
+          break;
+        case 'RIGHT_CLICK_BLOCKED':
+          penalty += 1;
+          break;
+        case 'MULTIPLE_VOICES_DETECTED':
+          penalty += 15;
+          break;
+        case 'UNNATURAL_TYPING_VELOCITY':
+          penalty += 10;
+          break;
+        case 'AI_HONEYPOT_TRIGGERED':
+          penalty += 25;
+          break;
+        default:
+          penalty += 2;
+          break;
+      }
+    }
+    return penalty;
+  }
+
   async logAntiCheatEvents(studentId: string, sessionId: string, events: any[]) {
-    const session = await practiceRepository.findById(sessionId);
-    const sessionStudentId = (session?.studentId?._id || session?.studentId)?.toString();
-    if (!session || sessionStudentId !== studentId.toString()) {
-      throw new AppError('Forbidden', 403);
+    if (!events || !Array.isArray(events) || events.length === 0) {
+      return { trustScore: 100 };
     }
 
-    session.antiCheatEvents.push(...events);
-    session.trustScore = this.calculateTrustScore(session.antiCheatEvents);
-    await session.save();
+    const penalty = this.calculateBatchPenalty(events);
 
-    return { trustScore: session.trustScore };
+    // Atomic aggregation pipeline update filtered by _id and studentId clamping trustScore at 0 minimum
+    const result = await PracticeSession.findOneAndUpdate(
+      { _id: sessionId, studentId },
+      [
+        {
+          $set: {
+            antiCheatEvents: {
+              $concatArrays: [{ $ifNull: ['$antiCheatEvents', []] }, events],
+            },
+            trustScore: {
+              $max: [0, { $subtract: [{ $ifNull: ['$trustScore', 100] }, penalty] }],
+            },
+          },
+        },
+      ],
+      { returnDocument: 'after', projection: { trustScore: 1, _id: 1 }, updatePipeline: true } as any
+    ).lean();
+
+    if (!result) {
+      const sessionExists = await PracticeSession.exists({ _id: sessionId });
+      if (sessionExists) {
+        throw new AppError('Forbidden', 403);
+      }
+      throw new AppError('Session not found', 404);
+    }
+
+    return { trustScore: (result as any).trustScore ?? 100 };
   }
 
   async requestExplanation(studentId: string, sessionId: string, answerId: string) {

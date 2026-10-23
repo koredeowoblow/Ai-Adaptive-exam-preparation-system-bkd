@@ -146,7 +146,10 @@ const QuestionSchema = new Schema<IQuestionDocument>(
 );
 
 QuestionSchema.index({ topicId: 1, eloRating: 1 });
+QuestionSchema.index({ topicId: 1, type: 1, eloRating: 1 });
 // Compound index for fast cursor pagination and filtering by topic
 QuestionSchema.index({ topicId: 1, _id: -1 });
+QuestionSchema.index({ topicId: 1, createdAt: -1 });
+QuestionSchema.index({ type: 1, createdAt: -1 });
 
 export const Question = model<IQuestionDocument>('Question', QuestionSchema);

@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AppError } from '../utils/AppError';
 import { env } from '../config/env';
-import { studentRepository } from '../repositories/student.repository';
+import { authenticatedLimiter } from './rateLimiter';
 
 // Extend Express Request object to include user
 declare global {
@@ -30,6 +30,8 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
       if (cookies.token) {
         token = cookies.token;
       }
+    } else if (req.query && typeof req.query.token === 'string') {
+      token = req.query.token;
     }
 
     if (!token) {
@@ -47,7 +49,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         role: decoded.role,
       };
       
-      next();
+      return authenticatedLimiter(req, res, next);
     } catch (err) {
       console.error('JWT VERIFY ERROR:', err);
       return next(new AppError('Not authorized to access this route', 401));
