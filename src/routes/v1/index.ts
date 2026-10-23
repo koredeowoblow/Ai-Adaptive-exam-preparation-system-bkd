@@ -16,6 +16,7 @@ import { integrityRoutes } from './integrity.routes';
 import { aiRoutes } from './ai.routes';
 import { studyPlanRoutes } from './studyPlan.routes';
 import { uploadRoutes } from './upload.routes';
+import { reviewDeckRoutes } from './reviewDeck.routes';
 import rbacRoutes from './rbac.routes';
 
 const router = Router();
@@ -29,6 +30,7 @@ router.use('/auth', authRoutes);
 router.use('/students', studentRoutes);
 router.use('/mastery', masteryRoutes);
 router.use('/practice-sessions', practiceRoutes);
+router.use('/review-deck', reviewDeckRoutes);
 router.use('/streaks', streakRoutes);
 router.use('/achievements', achievementRoutes);
 router.use('/leaderboards', leaderboardRoutes);

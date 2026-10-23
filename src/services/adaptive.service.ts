@@ -4,6 +4,7 @@ import { topicRepository } from "../repositories/topic.repository";
 import { masteryService } from './mastery.service';
 import { IMasteryRecordDocument } from "../types/mastery.types";
 import { IQuestionDocument } from "../types/question.types";
+import { reviewDeckService } from './reviewDeck.service';
 
 export class AdaptiveService {
 
@@ -34,6 +35,13 @@ export class AdaptiveService {
       await this.incrementAnswerCounters(masteryRecord._id.toString(), isCorrect).catch((err) => {
         console.warn(`[ELO_WARN] Failed to increment mastery counters:`, err);
       });
+
+      // 2b. Queue into Spaced Repetition Review Deck if answered incorrectly
+      if (!isCorrect) {
+        reviewDeckService.recordIncorrectAnswer(studentId, questionId, courseId, topicId).catch((err) => {
+          console.warn(`[REVIEW_DECK_WARN] Failed to record incorrect answer for question ${questionId}:`, err);
+        });
+      }
 
       // 3. Elo Conditional Updates - bounded to 3 retries with exponential backoff
       const MAX_RETRIES = 3;
@@ -211,6 +219,16 @@ export class AdaptiveService {
 
       if (masteryBulkOps.length > 0) {
         await masteryRepository.bulkUpdateStats(masteryBulkOps);
+      }
+
+      // 5. Queue any incorrect answers into Spaced Repetition Review Deck
+      const incorrectAnswers = answers.filter((a) => !a.isCorrect);
+      if (incorrectAnswers.length > 0) {
+        Promise.allSettled(
+          incorrectAnswers.map((a) =>
+            reviewDeckService.recordIncorrectAnswer(studentId, a.questionId, courseId, a.topicId)
+          )
+        ).catch(() => {});
       }
     } catch (err) {
       console.warn(`[ELO_BATCH_ERROR] Non-fatal error during batch Elo calculation for student ${studentId}:`, err);
